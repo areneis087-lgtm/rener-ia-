@@ -9,7 +9,7 @@ st.write("App criado pelo celular e 100% gratuito!")
 api_key_input = st.sidebar.text_input("Insira sua API Key do Groq", type="password")
 
 if not api_key_input:
-    st.info("👈 Insira sua chave do Groq na barra lateral para começar.")
+    st.info("👉 Insira sua chave do Groq na barra lateral para começar.")
     st.stop()
 
 client = Groq(api_key=api_key_input)
@@ -30,7 +30,7 @@ if prompt := st.chat_input("Digite sua pergunta..."):
         with st.spinner("Pensando..."):
             try:
                 chat_completion = client.chat.completions.create(
-                    model="llama3-70b-8192",
+                    model="llama-3.3-70b-versatile",
                     messages=[{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
                 )
                 response = chat_completion.choices[0].message.content
