@@ -30,7 +30,7 @@ if prompt := st.chat_input("Digite sua pergunta..."):
         with st.spinner("Pensando..."):
             try:
                 chat_completion = client.chat.completions.create(
-                    model="llama3-8b-8192",
+                    model="llama-3.1-8b-instant",
                     messages=[{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
                 )
                 response = chat_completion.choices[0].message.content
