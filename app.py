@@ -6,7 +6,6 @@ st.set_page_config(page_title="Meu App de IA", page_icon="🤖")
 st.title("🤖 Meu Assistente de IA")
 st.write("App rodando com sucesso e conectado automaticamente!")
 
-# Puxa a chave de forma segura direto das configurações do Streamlit
 try:
     api_key = st.secrets["GROQ_API_KEY"]
 except Exception:
@@ -15,7 +14,6 @@ except Exception:
 
 client = Groq(api_key=api_key)
 
-# Barra lateral com os atalhos de mídia que criamos antes
 st.sidebar.subheader("🎨 Criação de Mídia")
 st.sidebar.link_button("Gerar Imagens com IA", "https://app.leonardo.ai")
 st.sidebar.link_button("Criar Vídeos com IA", "https://runwayml.com")
