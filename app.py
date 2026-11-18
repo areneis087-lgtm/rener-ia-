@@ -4,12 +4,20 @@ from groq import Groq
 st.set_page_config(page_title="Meu App de IA", page_icon="🤖")
 
 st.title("🤖 Meu Assistente de IA")
-st.write("App rodando com sucesso!")
+st.write("App rodando com sucesso e pronto para uso!")
 
+# Barra lateral com links úteis de mídia
 api_key_input = st.sidebar.text_input("Insira sua API Key do Groq", type="password")
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("🎨 Criação de Mídia (Imagens e Vídeos)")
+st.sidebar.markdown("Como a Groq é focada em texto ultra-rápido, use estas ferramentas gratuitas recomendadas para gerar suas mídias:")
+
+st.sidebar.link_button("Gerar Imagens com IA", "https://app.leonardo.ai")
+st.sidebar.link_button("Criar Vídeos com IA", "https://runwayml.com")
+
 if not api_key_input:
-    st.info("Insira sua chave do Groq na barra lateral para começar.")
+    st.info("Insira sua chave do Groq na barra lateral para começar a conversar.")
     st.stop()
 
 client = Groq(api_key=api_key_input)
