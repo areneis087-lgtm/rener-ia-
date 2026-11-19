@@ -1,9 +1,9 @@
 import streamlit as st
 from groq import Groq
 
-st.set_page_config(page_title="Meu App de IA", page_icon="🤖")
+st.set_page_config(page_title="Rener", page_icon="🤖")
 
-st.title("🤖 Meu Assistente de IA")
+st.title("🤖 Rener")
 st.write("App rodando com sucesso e conectado automaticamente!")
 
 try:
@@ -17,6 +17,16 @@ client = Groq(api_key=api_key)
 st.sidebar.subheader("🎨 Criação de Mídia")
 st.sidebar.link_button("Gerar Imagens com IA", "https://app.leonardo.ai")
 st.sidebar.link_button("Criar Vídeos com IA", "https://runwayml.com")
+
+SYSTEM_PROMPT = {
+    "role": "system",
+    "content": (
+        "Você se chama Rener. "
+        "Seu criador também se chama Rener, e ele montou este aplicativo junto com o Gemini. "
+        "Quando perguntarem quem te criou ou sobre a origem do seu nome, responda exatamente: "
+        "'Fui criado pelo Rener em parceria com o Gemini — por isso que meu nome é Rener, homenagem ao meu criador.'"
+    ),
+}
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -33,9 +43,12 @@ if prompt := st.chat_input("Digite sua pergunta..."):
     with st.chat_message("assistant"):
         with st.spinner("Pensando..."):
             try:
+                mensagens_enviadas = [SYSTEM_PROMPT] + [
+                    {"role": m["role"], "content": m["content"]} for m in st.session_state.messages
+                ]
                 chat_completion = client.chat.completions.create(
                     model="openai/gpt-oss-20b",
-                    messages=[{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
+                    messages=mensagens_enviadas,
                 )
                 response = chat_completion.choices[0].message.content
                 st.markdown(response)
