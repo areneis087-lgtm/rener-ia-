@@ -126,7 +126,10 @@ def detectar_pedido_midia(texto: str) -> str:
 
 def planejar_cena_com_ia(client: Groq, pedido_usuario: str, tipo_midia: str) -> dict:
     fallback = {
-        "prompt_visual": f"{pedido_usuario}, cinematic lighting, high detail, rich textures, sharp focus, no text, no watermark",
+        "prompt_visual": (
+            f"{pedido_usuario}, crisp focus, high resolution photography, realistic lighting, "
+            "rich fine textures, clean composition, no text, no watermark"
+        ),
         "cor_a": (25, 35, 55),
         "cor_b": (15, 20, 32),
         "cor_c": (220, 38, 38),
@@ -141,7 +144,7 @@ def planejar_cena_com_ia(client: Groq, pedido_usuario: str, tipo_midia: str) -> 
                     "content": (
                         "Você é o diretor visual do Rener. O usuário pediu uma imagem ou vídeo curto em português. "
                         "Retorne APENAS um JSON válido com as chaves: "
-                        "prompt_visual (descrição rica e detalhada em inglês do tema pedido — times, seleções, animais, filmes, paisagens, cenas — com iluminação cinematográfica, detalhes reais e sem texto/marca d'água), "
+                        "prompt_visual (descrição rica e detalhada em inglês do tema pedido — times, seleções, animais, filmes, paisagens, cenas — com alta nitidez, foco preciso, iluminação cinematográfica, texturas detalhadas e sem texto ou marca d'água), "
                         "cor_a (3 inteiros RGB), cor_b (3 inteiros RGB), cor_c (3 inteiros RGB). "
                         "Nada fora do JSON."
                     ),
@@ -171,11 +174,14 @@ def gerar_imagem_alta_qualidade(
     largura: int = 1024,
     altura: int = 1024,
 ) -> bytes:
-    prompt_visual = info_cena.get("prompt_visual", "cinematic scene, high detail")
-    prompt_limpo = f"{prompt_visual}, ultra detailed, realistic lighting, no text, no watermark, no logo"
+    prompt_visual = info_cena.get("prompt_visual", "cinematic scene, sharp focus, high detail")
+    prompt_nitido = (
+        f"{prompt_visual}, sharp focus, high clarity, crisp details, natural lighting, "
+        "no blur, no text, no watermark, no logo"
+    )
     param_chave = f"&key={quote(pollinations_key)}" if pollinations_key else ""
     url = (
-        f"https://image.pollinations.ai/prompt/{quote(prompt_limpo)}"
+        f"https://image.pollinations.ai/prompt/{quote(prompt_nitido)}"
         f"?width={largura}&height={altura}&model=flux&nologo=true&enhance=true{param_chave}"
     )
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -186,7 +192,7 @@ def gerar_imagem_alta_qualidade(
         resp = requests.get(url, timeout=45, headers=headers)
         if resp.status_code == 200 and resp.content:
             img = Image.open(BytesIO(resp.content)).convert("RGB")
-            img = recortar_bordas_imagem(img)
+            img = recortar_bordas_imagem(img).filter(ImageFilter.SHARPEN)
             buf = BytesIO()
             img.save(buf, format="PNG")
             return buf.getvalue()
@@ -207,7 +213,7 @@ def gerar_imagem_alta_qualidade(
     cx, cy = largura // 2, altura // 2
     for raio, alpha_cor in [(340, cc), (240, ca), (140, (240, 244, 248))]:
         draw.ellipse([cx - raio, cy - raio, cx + raio, cy + raio], outline=alpha_cor, width=6)
-    img = recortar_bordas_imagem(img.filter(ImageFilter.SMOOTH))
+    img = recortar_bordas_imagem(img.filter(ImageFilter.SHARPEN))
     buf = BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -220,15 +226,22 @@ def gerar_video_curto_rener(
     fps: int = 15,
 ) -> bytes:
     largura, altura = 720, 720
-    img_bytes = gerar_imagem_alta_qualidade(info_cena, pollinations_key=pollinations_key, largura=largura + 140, altura=altura + 140)
-    arte_base = Image.open(BytesIO(img_bytes)).convert("RGB").resize((largura + 140, altura + 140))
+    img_bytes = gerar_imagem_alta_qualidade(
+        info_cena,
+        pollinations_key=pollinations_key,
+        largura=largura + 140,
+        altura=altura + 140,
+    )
+    arte_base = Image.open(BytesIO(img_bytes)).convert("RGB").resize(
+        (largura + 140, altura + 140), Image.Resampling.LANCZOS
+    )
     total_frames = max(15, segundos * fps)
 
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
         caminho_mp4 = tmp.name
 
     try:
-        writer = imageio.get_writer(caminho_mp4, fps=fps, codec="libx264", quality=7)
+        writer = imageio.get_writer(caminho_mp4, fps=fps, codec="libx264", quality=8)
         try:
             for i in range(total_frames):
                 progresso = i / max(1, total_frames - 1)
