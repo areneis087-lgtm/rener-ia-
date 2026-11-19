@@ -34,7 +34,7 @@ st.markdown(
             margin-top: 6px;
         }
 
-        /* Remove a barra/faixa quadrada padrão do rodapé do Streamlit */
+        /* Rodapé limpo */
         [data-testid="stBottom"],
         [data-testid="stBottom"] > div,
         [data-testid="stBottom"] > div > div,
@@ -47,19 +47,20 @@ st.markdown(
             box-shadow: none !important;
         }
 
-        /* Cápsula arredondada principal da caixa de digitação */
+        /* Cápsula visível e arredondada */
         [data-testid="stChatInput"] [data-baseweb="textarea"],
         [data-testid="stChatInput"] [data-baseweb="base-input"] {
-            background-color: #151821 !important;
-            border: 1px solid rgba(255, 255, 255, 0.16) !important;
+            background-color: #1e2433 !important;
+            border: 1.5px solid rgba(148, 163, 184, 0.45) !important;
             border-radius: 999px !important;
             padding: 4px 10px 4px 16px !important;
-            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6) !important;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65) !important;
         }
 
         [data-testid="stChatInput"] textarea {
             background-color: transparent !important;
-            color: #ffffff !important;
+            color: #f8fafc !important;
+            caret-color: #60a5fa !important;
             font-size: 15px !important;
             border: none !important;
             border-radius: 999px !important;
@@ -67,10 +68,11 @@ st.markdown(
         }
 
         [data-testid="stChatInput"] textarea::placeholder {
-            color: #9ca3af !important;
+            color: #cbd5e1 !important;
+            opacity: 1 !important;
         }
 
-        /* Botão de enviar arredondado */
+        /* Botão de enviar bem visível */
         [data-testid="stChatInput"] button {
             background-color: #2563eb !important;
             color: #ffffff !important;
@@ -84,10 +86,10 @@ st.markdown(
             background-color: #3b82f6 !important;
         }
 
-        /* Bolhas de mensagem arredondadas */
+        /* Bolhas de mensagem com contraste nítido */
         [data-testid="stChatMessage"] {
-            background-color: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            background-color: rgba(30, 41, 59, 0.55);
+            border: 1px solid rgba(148, 163, 184, 0.22);
             border-radius: 20px;
             padding: 10px 14px;
             margin-bottom: 8px;
