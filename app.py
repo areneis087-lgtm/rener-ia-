@@ -65,70 +65,13 @@ def cortar_selo_canto(img: Image.Image) -> Image.Image:
     largura, altura = img.size
     if largura < 200 or altura < 200:
         return img
-    # Remove apenas a faixa inferior onde costuma aparecer marca d'água, sem esticar o restante
     return img.crop((0, 0, largura, int(altura * 0.91)))
-
-
-def detectar_pedido_midia(texto: str) -> str:
-    t = texto.lower().strip()
-    palavras_video = (
-        "vídeo",
-        "video",
-        "vídeo curto",
-        "video curto",
-        "clipe",
-        "animação",
-        "animacao",
-        "faz um vídeo",
-        "faz um video",
-        "cria um vídeo",
-        "cria um video",
-        "gere um vídeo",
-        "gere um video",
-    )
-    if any(p in t for p in palavras_video):
-        return "video"
-
-    palavras_imagem = (
-        "imagem",
-        "foto",
-        "fotografia",
-        "ilustração",
-        "ilustracao",
-        "desenho",
-        "arte",
-        "escudo",
-        "emblema",
-        "retrato",
-        "wallpaper",
-        "papel de parede",
-        "4k",
-        "gera uma",
-        "gere uma",
-        "cria uma",
-        "crie uma",
-        "faz uma",
-        "faça uma",
-        "gera um",
-        "gere um",
-        "cria um",
-        "crie um",
-        "faz um",
-        "faça um",
-        "mostra uma",
-        "mostra um",
-        "quero ver um",
-        "quero ver uma",
-    )
-    if any(p in t for p in palavras_imagem):
-        return "image"
-    return ""
 
 
 def detectar_dimensoes_pedido(pedido_usuario: str) -> tuple[int, int]:
     t = pedido_usuario.lower()
     pede_paisagem = any(
-        p in t for p in ("paisagem", "widescreen", "horizontal", "banner", "cinematográfico", "cinematografico")
+        p in t for p in ("paisagem", "widescreen", "horizontal", "banner", "cinematográfico", "cinematografico", "landscape")
     )
     pede_vertical = any(p in t for p in ("vertical", "stories", "story", "celular", "portrait"))
 
@@ -147,6 +90,55 @@ def formatar_historico_curto(mensagens: list[dict], limite: int = 8) -> str:
         if conteudo:
             trechos.append(f"{papel}: {conteudo}")
     return "\n".join(trechos)
+
+
+def decidir_acao_com_ia(client: Groq, mensagem_atual: str, historico: list[dict]) -> dict:
+    contexto = formatar_historico_curto(historico, limite=6)
+    padrao = {"acao": "chat", "consulta_web": mensagem_atual, "prompt_midia": mensagem_atual}
+    try:
+        resp = client.chat.completions.create(
+            model="openai/gpt-oss-20b",
+            tool_choice="none",
+            temperature=0.1,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Você é o roteador inteligente de intenções do assistente Rener. "
+                        "Analise a mensagem atual e o contexto recente da conversa e escolha UMA ação:\n"
+                        "- 'image': o usuário quer ver, criar ou gerar uma imagem ou foto (incluindo pedidos que "
+                        "continuam um pedido visual anterior, como 'em 4k', 'de frente', 'mais realista').\n"
+                        "- 'video': o usuário quer ver, criar ou gerar um vídeo, animação ou clipe curto.\n"
+                        "- 'web': a resposta exige fato recente, notícia, placar, resultado, cotação, clima, "
+                        "estreia ou informação atual da internet.\n"
+                        "- 'chat': conversa geral, explicação, dúvida, opinião, programação, estudo ou papo do dia a dia.\n"
+                        "Preencha 'consulta_web' com uma busca clara quando for 'web', e 'prompt_midia' com o pedido "
+                        "visual completo (combinando o contexto se houver referência implícita) quando for 'image' ou 'video'.\n"
+                        "Responda APENAS com JSON válido no formato:\n"
+                        '{"acao": "chat|image|video|web", "consulta_web": "...", "prompt_midia": "..."}'
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"Contexto:\n{contexto or '(vazio)'}\n\nMensagem atual: {mensagem_atual}",
+                },
+            ],
+        )
+        texto = (resp.choices[0].message.content or "").strip()
+        match = re.search(r"\{.*\}", texto, re.DOTALL)
+        if match:
+            dados = json.loads(match.group(0))
+            acao = str(dados.get("acao") or "chat").lower().strip()
+            if acao not in {"chat", "image", "video", "web"}:
+                acao = "chat"
+            return {
+                "acao": acao,
+                "consulta_web": str(dados.get("consulta_web") or mensagem_atual).strip(),
+                "prompt_midia": str(dados.get("prompt_midia") or mensagem_atual).strip(),
+            }
+    except Exception:
+        pass
+    return padrao
 
 
 def planejar_cena_com_ia(
@@ -286,70 +278,6 @@ def gerar_video_curto_rener(
             Path(caminho_mp4).unlink(missing_ok=True)
         except Exception:
             pass
-
-
-def precisa_pesquisar_na_web(consulta: str) -> bool:
-    texto = consulta.strip().lower()
-    if len(texto) <= 24 and texto in {
-        "oi",
-        "olá",
-        "ola",
-        "bom dia",
-        "boa tarde",
-        "boa noite",
-        "tudo bem",
-        "muito bem",
-        "valeu",
-        "obrigado",
-        "obrigada",
-        "top",
-        "show",
-        "beleza",
-        "ok",
-    }:
-        return False
-
-    gatilhos_web = (
-        "jogo",
-        "placar",
-        "resultado",
-        "gol",
-        "gols",
-        "ao vivo",
-        "partida",
-        "notícia",
-        "noticia",
-        "notícias",
-        "noticias",
-        "hoje",
-        "ontem",
-        "amanhã",
-        "amanha",
-        "agora",
-        "últimas",
-        "ultimas",
-        "preço",
-        "preco",
-        "cotação",
-        "cotacao",
-        "clima",
-        "tempo",
-        "quem ganhou",
-        "quem venceu",
-        "campeonato",
-        "tabela",
-        "pesquise",
-        "pesquisa",
-        "procure",
-        "na internet",
-        "no google",
-        "lançamento",
-        "lancamento",
-        "estreia",
-        "atual",
-        "atualmente",
-    )
-    return any(p in texto for p in gatilhos_web)
 
 
 def eh_consulta_esportiva_ou_tempo_real(consulta: str) -> bool:
@@ -714,7 +642,7 @@ system_prompt = {
         "Seu criador também se chama Rener, e ele montou este aplicativo junto com o Gemini. "
         "Quando perguntarem quem te criou ou sobre a origem do seu nome, responda exatamente: "
         "'Fui criado pelo Rener em parceria com o Gemini — por isso que meu nome é Rener, homenagem ao meu criador.' "
-        "Você entende perfeitamente qualquer assunto e qualquer pedido do usuário, associando sempre o que está "
+        "Você entende perfeitamente qualquer assunto e qualquer pedido do usuário, conectando sempre o que está "
         "sendo dito agora ao histórico da conversa. "
         "Converse com naturalidade, autonomia e espontaneidade, como uma pessoa real que está batendo papo com o Rener. "
         "Quando o usuário te elogiar ou pedir para agradecer elogios, agradeça de forma simpática e direta na própria conversa. "
@@ -856,15 +784,18 @@ else:
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            tipo_midia = detectar_pedido_midia(prompt)
+            historico_anterior = st.session_state.messages[:-1]
+            decisao = decidir_acao_com_ia(client, prompt, historico_anterior)
+            acao = decisao["acao"]
 
-            if tipo_midia == "image":
+            if acao == "image":
+                pedido_midia = decisao["prompt_midia"]
                 with st.spinner("Criando imagem..."):
-                    info = planejar_cena_com_ia(client, prompt, "imagem", st.session_state.messages[:-1])
+                    info = planejar_cena_com_ia(client, pedido_midia, "imagem", historico_anterior)
                     img_bytes = gerar_imagem_alta_qualidade(
                         info,
                         pollinations_key=pollinations_key,
-                        pedido_original=prompt,
+                        pedido_original=pedido_midia,
                     )
                     if img_bytes:
                         st.session_state.ultima_imagem_gerada = img_bytes
@@ -877,13 +808,14 @@ else:
                         st.markdown(texto_resp)
                         st.session_state.messages.append({"role": "assistant", "content": texto_resp})
 
-            elif tipo_midia == "video":
+            elif acao == "video":
+                pedido_midia = decisao["prompt_midia"]
                 with st.spinner("Criando vídeo curto..."):
-                    info = planejar_cena_com_ia(client, prompt, "vídeo curto", st.session_state.messages[:-1])
+                    info = planejar_cena_com_ia(client, pedido_midia, "vídeo curto", historico_anterior)
                     mp4_bytes = gerar_video_curto_rener(
                         info,
                         pollinations_key=pollinations_key,
-                        pedido_original=prompt,
+                        pedido_original=pedido_midia,
                         segundos=4,
                     )
                     if mp4_bytes:
@@ -902,12 +834,13 @@ else:
                     try:
                         mensagens_enviadas = [system_prompt] + [
                             {"role": m["role"], "content": m["content"]}
-                            for m in st.session_state.messages[:-1]
+                            for m in historico_anterior
                             if m.get("content")
                         ]
 
-                        if precisa_pesquisar_na_web(prompt):
-                            resultados_web = pesquisar_na_internet(prompt, tavily_key)
+                        if acao == "web":
+                            consulta_busca = decisao["consulta_web"] or prompt
+                            resultados_web = pesquisar_na_internet(consulta_busca, tavily_key)
                             if resultados_web:
                                 mensagem_envio = (
                                     f"Mensagem do usuário: {prompt}\n\n"
