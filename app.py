@@ -11,7 +11,7 @@ from ddgs import DDGS
 from groq import Groq
 import imageio.v2 as imageio
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image
 import requests
 import streamlit as st
 from tavily import TavilyClient
@@ -59,6 +59,15 @@ def encontrar_e_carregar_fundo() -> str:
             return f"data:{mime};base64,{b64}"
 
     return ""
+
+
+def cortar_selo_canto(img: Image.Image) -> Image.Image:
+    largura, altura = img.size
+    if largura < 200 or altura < 200:
+        return img
+    # Remove apenas a faixa inferior onde costuma aparecer a marca d'água sem esticar o resto
+    cortada = img.crop((0, 0, largura, int(altura * 0.91)))
+    return cortada
 
 
 def detectar_pedido_midia(texto: str) -> str:
@@ -117,16 +126,16 @@ def detectar_pedido_midia(texto: str) -> str:
     return ""
 
 
-def detectar_dimensoes_pedido(pedido_usuario: str, padrao_w: int = 1024, padrao_h: int = 1024) -> tuple[int, int]:
+def detectar_dimensoes_pedido(pedido_usuario: str) -> tuple[int, int]:
     t = pedido_usuario.lower()
-    pede_paisagem = any(p in t for p in ("paisagem", "widescreen", "horizontal", "banner", "cinematográfico", "cinematografico", "4k"))
+    pede_paisagem = any(p in t for p in ("paisagem", "widescreen", "horizontal", "banner", "cinematográfico", "cinematografico"))
     pede_vertical = any(p in t for p in ("vertical", "stories", "story", "celular", "portrait"))
 
     if pede_vertical:
         return (768, 1280)
     if pede_paisagem:
         return (1280, 720)
-    return (padrao_w, padrao_h)
+    return (1024, 1024)
 
 
 def formatar_historico_curto(mensagens: list[dict], limite: int = 8) -> str:
@@ -150,9 +159,6 @@ def planejar_cena_com_ia(
             f"realistic photograph of {pedido_usuario}, natural daylight, sharp focus, "
             "authentic real-world details, true-to-life textures, no text, no watermark"
         ),
-        "cor_a": (25, 35, 55),
-        "cor_b": (15, 20, 32),
-        "cor_c": (220, 38, 38),
     }
     contexto_str = formatar_historico_curto(historico_mensagens or [])
     try:
@@ -170,9 +176,8 @@ def planejar_cena_com_ia(
                         "1. Foque exatamente no assunto pedido pelo usuário.\n"
                         "2. Priorize fotografia realista e fiel ao mundo real, com iluminação natural, foco nítido e "
                         "detalhes autênticos, sem texto, letras ou marca d'água.\n"
-                        "Retorne APENAS um JSON válido com:\n"
-                        "prompt_visual (descrição detalhada em inglês), "
-                        "cor_a (3 inteiros RGB), cor_b (3 inteiros RGB), cor_c (3 inteiros RGB)."
+                        "Retorne APENAS um JSON válido com a chave:\n"
+                        "prompt_visual (descrição detalhada em inglês)."
                     ),
                 },
                 {
@@ -190,12 +195,7 @@ def planejar_cena_com_ia(
         if match:
             dados = json.loads(match.group(0))
             pv = str(dados.get("prompt_visual") or fallback["prompt_visual"]).strip()
-            return {
-                "prompt_visual": pv,
-                "cor_a": tuple(int(x) for x in (dados.get("cor_a") or fallback["cor_a"])[:3]),
-                "cor_b": tuple(int(x) for x in (dados.get("cor_b") or fallback["cor_b"])[:3]),
-                "cor_c": tuple(int(x) for x in (dados.get("cor_c") or fallback["cor_c"])[:3]),
-            }
+            return {"prompt_visual": pv}
     except Exception:
         pass
     return fallback
@@ -205,12 +205,8 @@ def gerar_imagem_alta_qualidade(
     info_cena: dict,
     pollinations_key: str = "",
     pedido_original: str = "",
-    largura: int = 1024,
-    altura: int = 1024,
-) -> bytes:
-    if pedido_original:
-        largura, altura = detectar_dimensoes_pedido(pedido_original, largura, altura)
-
+) -> bytes | None:
+    largura, altura = detectar_dimensoes_pedido(pedido_original)
     prompt_visual = info_cena.get("prompt_visual", "realistic photograph, sharp focus, high detail")
     prompt_limpo = f"{prompt_visual}, sharp focus, high detail, realistic lighting, no text, no watermark, no logo"
     param_chave = f"&key={quote(pollinations_key)}" if pollinations_key else ""
@@ -223,33 +219,18 @@ def gerar_imagem_alta_qualidade(
         headers["Authorization"] = f"Bearer {pollinations_key}"
 
     try:
-        resp = requests.get(url, timeout=45, headers=headers)
+        resp = requests.get(url, timeout=35, headers=headers)
         if resp.status_code == 200 and resp.content:
             img = Image.open(BytesIO(resp.content)).convert("RGB")
             if img.size[0] >= 120 and img.size[1] >= 120:
+                img = cortar_selo_canto(img)
                 buf = BytesIO()
                 img.save(buf, format="PNG")
                 return buf.getvalue()
     except Exception:
         pass
 
-    ca = info_cena.get("cor_a", (24, 38, 68))
-    cb = info_cena.get("cor_b", (10, 15, 26))
-    cc = info_cena.get("cor_c", (210, 45, 55))
-    img = Image.new("RGB", (largura, altura), cb)
-    draw = ImageDraw.Draw(img)
-    for y in range(altura):
-        t = y / max(1, altura - 1)
-        r = int(cb[0] * (1 - t) + ca[0] * t)
-        g = int(cb[1] * (1 - t) + ca[1] * t)
-        b = int(cb[2] * (1 - t) + ca[2] * t)
-        draw.line([(0, y), (largura, y)], fill=(r, g, b))
-    cx, cy = largura // 2, altura // 2
-    for raio, alpha_cor in [(280, cc), (190, ca), (110, (240, 244, 248))]:
-        draw.ellipse([cx - raio, cy - raio, cx + raio, cy + raio], outline=alpha_cor, width=5)
-    buf = BytesIO()
-    img.save(buf, format="PNG")
-    return buf.getvalue()
+    return None
 
 
 def gerar_video_curto_rener(
@@ -258,15 +239,16 @@ def gerar_video_curto_rener(
     pedido_original: str = "",
     segundos: int = 4,
     fps: int = 15,
-) -> bytes:
-    largura, altura = 720, 720
+) -> bytes | None:
     img_bytes = gerar_imagem_alta_qualidade(
         info_cena,
         pollinations_key=pollinations_key,
         pedido_original=pedido_original,
-        largura=largura + 120,
-        altura=altura + 120,
     )
+    if not img_bytes:
+        return None
+
+    largura, altura = 720, 720
     arte_base = Image.open(BytesIO(img_bytes)).convert("RGB").resize(
         (largura + 120, altura + 120), Image.Resampling.LANCZOS
     )
@@ -288,6 +270,8 @@ def gerar_video_curto_rener(
             writer.close()
 
         return Path(caminho_mp4).read_bytes()
+    except Exception:
+        return None
     finally:
         try:
             Path(caminho_mp4).unlink(missing_ok=True)
@@ -755,14 +739,17 @@ elif st.session_state.menu_aba == "Imagens":
                     pollinations_key=pollinations_key,
                     pedido_original=prompt_img.strip(),
                 )
-                st.session_state.ultima_imagem_gerada = img_bytes
-                st.session_state.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": "Aqui está:",
-                        "image": img_bytes,
-                    }
-                )
+                if img_bytes:
+                    st.session_state.ultima_imagem_gerada = img_bytes
+                    st.session_state.messages.append(
+                        {
+                            "role": "assistant",
+                            "content": "Aqui está:",
+                            "image": img_bytes,
+                        }
+                    )
+                else:
+                    st.warning("Não consegui gerar a imagem agora. Tente novamente em instantes.")
     if st.session_state.ultima_imagem_gerada:
         img_b = st.session_state.ultima_imagem_gerada
         st.image(img_b, use_container_width=True)
@@ -785,14 +772,17 @@ elif st.session_state.menu_aba == "Vídeos":
                     pedido_original=prompt_vid.strip(),
                     segundos=duracao_vid,
                 )
-                st.session_state.ultimo_video_gerado = mp4_bytes
-                st.session_state.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": "Aqui está:",
-                        "video": mp4_bytes,
-                    }
-                )
+                if mp4_bytes:
+                    st.session_state.ultimo_video_gerado = mp4_bytes
+                    st.session_state.messages.append(
+                        {
+                            "role": "assistant",
+                            "content": "Aqui está:",
+                            "video": mp4_bytes,
+                        }
+                    )
+                else:
+                    st.warning("Não consegui gerar o vídeo agora. Tente novamente em instantes.")
     if st.session_state.ultimo_video_gerado:
         vid_b = st.session_state.ultimo_video_gerado
         st.video(vid_b)
@@ -867,11 +857,16 @@ else:
                         pollinations_key=pollinations_key,
                         pedido_original=prompt,
                     )
-                    st.session_state.ultima_imagem_gerada = img_bytes
-                    texto_resp = "Aqui está:"
-                    st.markdown(texto_resp)
-                    st.image(img_bytes, use_container_width=True)
-                    st.session_state.messages.append({"role": "assistant", "content": texto_resp, "image": img_bytes})
+                    if img_bytes:
+                        st.session_state.ultima_imagem_gerada = img_bytes
+                        texto_resp = "Aqui está:"
+                        st.markdown(texto_resp)
+                        st.image(img_bytes, use_container_width=True)
+                        st.session_state.messages.append({"role": "assistant", "content": texto_resp, "image": img_bytes})
+                    else:
+                        texto_resp = "Não consegui gerar a imagem agora. Tente novamente em instantes."
+                        st.markdown(texto_resp)
+                        st.session_state.messages.append({"role": "assistant", "content": texto_resp})
 
             elif tipo_midia == "video":
                 with st.spinner("Criando vídeo curto..."):
@@ -882,11 +877,16 @@ else:
                         pedido_original=prompt,
                         segundos=4,
                     )
-                    st.session_state.ultimo_video_gerado = mp4_bytes
-                    texto_resp = "Aqui está:"
-                    st.markdown(texto_resp)
-                    st.video(mp4_bytes)
-                    st.session_state.messages.append({"role": "assistant", "content": texto_resp, "video": mp4_bytes})
+                    if mp4_bytes:
+                        st.session_state.ultimo_video_gerado = mp4_bytes
+                        texto_resp = "Aqui está:"
+                        st.markdown(texto_resp)
+                        st.video(mp4_bytes)
+                        st.session_state.messages.append({"role": "assistant", "content": texto_resp, "video": mp4_bytes})
+                    else:
+                        texto_resp = "Não consegui gerar o vídeo curto agora. Tente novamente em instantes."
+                        st.markdown(texto_resp)
+                        st.session_state.messages.append({"role": "assistant", "content": texto_resp})
 
             else:
                 with st.spinner("Pensando..."):
