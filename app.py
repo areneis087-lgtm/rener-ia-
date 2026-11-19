@@ -7,7 +7,7 @@ st.markdown(
     """
     <style>
         .stApp {
-            background: radial-gradient(circle at 50% 25%, #0c1938 0%, #050507 65%);
+            background: radial-gradient(circle at 50% 20%, #0d1d42 0%, #050507 62%);
             color: #f3f4f6;
         }
         [data-testid="stSidebar"] {
@@ -19,7 +19,7 @@ st.markdown(
             padding: 36px 12px 24px 12px;
         }
         .hero-sparkle {
-            font-size: 34px;
+            font-size: 36px;
             margin-bottom: 10px;
         }
         .hero-title {
@@ -33,11 +33,48 @@ st.markdown(
             color: #9ca3af;
             margin-top: 6px;
         }
+
+        /* Modernização da barra inferior e caixa de digitação */
+        [data-testid="stBottom"],
+        [data-testid="stBottom"] > div,
+        [data-testid="stChatInput"] {
+            background: transparent !important;
+            border: none !important;
+        }
+        [data-testid="stChatInput"] > div {
+            background-color: #15171c !important;
+            border: 1px solid rgba(255, 255, 255, 0.14) !important;
+            border-radius: 28px !important;
+            padding: 4px 8px 4px 14px !important;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55) !important;
+        }
         [data-testid="stChatInput"] textarea {
-            border-radius: 24px !important;
-            background-color: #16181d !important;
+            background-color: transparent !important;
             color: #ffffff !important;
-            border: 1px solid rgba(255, 255, 255, 0.12) !important;
+            font-size: 15px !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        [data-testid="stChatInput"] textarea::placeholder {
+            color: #9ca3af !important;
+        }
+        [data-testid="stChatInput"] button {
+            background-color: #2563eb !important;
+            color: #ffffff !important;
+            border-radius: 999px !important;
+            border: none !important;
+        }
+        [data-testid="stChatInput"] button:hover {
+            background-color: #3b82f6 !important;
+        }
+
+        /* Bolhas de mensagem mais limpas */
+        [data-testid="stChatMessage"] {
+            background-color: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 18px;
+            padding: 10px 14px;
+            margin-bottom: 8px;
         }
     </style>
     """,
