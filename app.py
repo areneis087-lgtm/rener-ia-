@@ -1,10 +1,16 @@
 import base64
 from datetime import datetime, timedelta
+from io import BytesIO
 from pathlib import Path
-from urllib.parse import quote_plus
+import re
+import tempfile
+from urllib.parse import quote, quote_plus
 import xml.etree.ElementTree as ET
 from ddgs import DDGS
 from groq import Groq
+import imageio.v2 as imageio
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 import requests
 import streamlit as st
 from tavily import TavilyClient
@@ -35,6 +41,110 @@ def encontrar_e_carregar_fundo() -> str:
             return f"data:{mime};base64,{b64}"
 
     return ""
+
+
+def limpar_prompt_midia(texto: str) -> str:
+    limpo = re.sub(
+        r"\b(gere|gerar|crie|criar|faz|fazer|faça|mostre|mostrar|monte|montar|um|uma|imagem|foto|ilustração|ilustracao|desenho|vídeo|video|curto|clipe|de|do|da|sobre|para|o|a)\b",
+        " ",
+        texto.lower(),
+        flags=re.IGNORECASE,
+    )
+    limpo = re.sub(r"\s+", " ", limpo).strip(" .,!?")
+    return limpo if len(limpo) >= 2 else texto.strip()
+
+
+def detectar_pedido_midia(texto: str) -> str:
+    t = texto.lower()
+    palavras_video = ("vídeo", "video", "vídeo curto", "video curto", "clipe", "animação", "animacao")
+    palavras_imagem = ("imagem", "foto", "ilustração", "ilustracao", "desenho", "gera uma imagem", "cria uma imagem", "faz uma imagem")
+    if any(p in t for p in palavras_video):
+        return "video"
+    if any(p in t for p in palavras_imagem):
+        return "image"
+    return ""
+
+
+def gerar_bytes_imagem(prompt_visual: str, largura: int = 1024, altura: int = 1024) -> bytes:
+    prompt_enriquecido = f"{prompt_visual}, high detail, vibrant lighting, sharp focus"
+    url = (
+        f"https://image.pollinations.ai/prompt/{quote(prompt_enriquecido)}"
+        f"?width={largura}&height={altura}&nologo=true&enhance=true"
+    )
+    try:
+        resp = requests.get(url, timeout=35, headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code == 200 and resp.content:
+            img = Image.open(BytesIO(resp.content)).convert("RGB")
+            buf = BytesIO()
+            img.save(buf, format="PNG")
+            return buf.getvalue()
+    except Exception:
+        pass
+
+    # Fallback visual local caso a rede bloqueie a requisição externa
+    img = Image.new("RGB", (largura, altura), (12, 24, 48))
+    draw = ImageDraw.Draw(img)
+    for y in range(altura):
+        r = int(10 + (y / altura) * 35)
+        g = int(20 + (y / altura) * 55)
+        b = int(45 + (y / altura) * 85)
+        draw.line([(0, y), (largura, y)], fill=(r, g, b))
+    draw.rounded_rectangle(
+        [largura // 8, altura // 3, largura - largura // 8, altura - altura // 3],
+        radius=36,
+        fill=(18, 28, 52),
+        outline=(226, 232, 240),
+        width=3,
+    )
+    draw.text((largura // 6, altura // 2 - 20), f"Rener • {prompt_visual[:60]}", fill=(255, 255, 255))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def gerar_video_curto_mp4(prompt_visual: str, imagem_bytes: bytes | None = None, segundos: int = 4, fps: int = 15) -> bytes:
+    largura, altura = 720, 720
+    if imagem_bytes:
+        base_img = Image.open(BytesIO(imagem_bytes)).convert("RGB").resize((largura + 120, altura + 120))
+    else:
+        base_img = Image.open(BytesIO(gerar_bytes_imagem(prompt_visual, largura + 120, altura + 120))).convert("RGB")
+
+    total_frames = max(15, segundos * fps)
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+        caminho_mp4 = tmp.name
+
+    try:
+        writer = imageio.get_writer(caminho_mp4, fps=fps, codec="libx264", quality=7)
+        try:
+            for i in range(total_frames):
+                progresso = i / max(1, total_frames - 1)
+                # Movimento suave de panorâmica/zoom
+                dx = int(progresso * 120)
+                dy = int((1 - abs(2 * progresso - 1)) * 80)
+                frame = base_img.crop((dx, dy, dx + largura, dy + altura)).convert("RGBA")
+
+                overlay = Image.new("RGBA", (largura, altura), (0, 0, 0, 0))
+                draw = ImageDraw.Draw(overlay)
+                # Faixa sutil na parte inferior para legenda
+                draw.rounded_rectangle([36, altura - 125, largura - 36, altura - 36], radius=20, fill=(5, 10, 22, 185))
+                legenda = prompt_visual[:72] if prompt_visual else "Clipe criado pelo Rener"
+                try:
+                    fonte = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
+                except Exception:
+                    fonte = ImageFont.load_default()
+                draw.text((58, altura - 95), f"Rener • {legenda}", fill=(255, 255, 255, 255), font=fonte)
+
+                final_frame = Image.alpha_composite(frame, overlay).convert("RGB")
+                writer.append_data(np.array(final_frame))
+        finally:
+            writer.close()
+
+        return Path(caminho_mp4).read_bytes()
+    finally:
+        try:
+            Path(caminho_mp4).unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def precisa_pesquisar_na_web(consulta: str) -> bool:
@@ -403,6 +513,10 @@ if "programados" not in st.session_state:
     st.session_state.programados = []
 if "estilo_rener" not in st.session_state:
     st.session_state.estilo_rener = "Amigável e direto"
+if "ultima_imagem_gerada" not in st.session_state:
+    st.session_state.ultima_imagem_gerada = None
+if "ultimo_video_gerado" not in st.session_state:
+    st.session_state.ultimo_video_gerado = None
 
 with st.sidebar:
     st.markdown("### Rener")
@@ -478,17 +592,50 @@ if st.session_state.menu_aba == "Biblioteca":
         st.rerun()
 
 elif st.session_state.menu_aba == "Imagens":
-    st.subheader("🖼️ Imagens")
-    st.write("Geração e edição de imagens com IA:")
-    st.link_button("Abrir Leonardo.ai", "https://app.leonardo.ai", use_container_width=True)
+    st.subheader("🖼️ Gerador de Imagens do Rener")
+    prompt_img = st.text_input("Descreva a imagem que você quer criar", placeholder="Ex: Cânion do São Francisco ao pôr do sol")
+    if st.button("✨ Gerar imagem aqui", use_container_width=True):
+        if prompt_img.strip():
+            with st.spinner("Gerando sua imagem dentro do Rener..."):
+                img_bytes = gerar_bytes_imagem(prompt_img.strip())
+                st.session_state.ultima_imagem_gerada = (prompt_img.strip(), img_bytes)
+                st.session_state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": f"Aqui está a imagem que criei sobre **{prompt_img.strip()}**:",
+                        "image": img_bytes,
+                    }
+                )
+    if st.session_state.ultima_imagem_gerada:
+        leg, img_b = st.session_state.ultima_imagem_gerada
+        st.image(img_b, caption=leg, use_container_width=True)
+        st.download_button("Baixar imagem (PNG)", data=img_b, file_name="rener_imagem.png", mime="image/png", use_container_width=True)
     if st.button("Voltar para o chat"):
         st.session_state.menu_aba = "Chat"
         st.rerun()
 
 elif st.session_state.menu_aba == "Vídeos":
-    st.subheader("🎬 Vídeos")
-    st.write("Criação de vídeos com IA:")
-    st.link_button("Abrir Runway", "https://runwayml.com", use_container_width=True)
+    st.subheader("🎬 Criador de Vídeos Curtos do Rener")
+    prompt_vid = st.text_input("Descreva a cena do vídeo curto", placeholder="Ex: Navegando pelo cânion em Sergipe")
+    duracao_vid = st.slider("Duração (segundos)", min_value=2, max_value=6, value=4)
+    if st.button("🎥 Gerar vídeo curto aqui", use_container_width=True):
+        if prompt_vid.strip():
+            with st.spinner("Montando seu vídeo curto dentro do Rener..."):
+                img_base = gerar_bytes_imagem(prompt_vid.strip(), largura=840, altura=840)
+                mp4_bytes = gerar_video_curto_mp4(prompt_vid.strip(), imagem_bytes=img_base, segundos=duracao_vid)
+                st.session_state.ultimo_video_gerado = (prompt_vid.strip(), mp4_bytes)
+                st.session_state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": f"Prontinho! Criei este vídeo curto de **{duracao_vid}s** sobre **{prompt_vid.strip()}**:",
+                        "video": mp4_bytes,
+                    }
+                )
+    if st.session_state.ultimo_video_gerado:
+        leg_v, vid_b = st.session_state.ultimo_video_gerado
+        st.video(vid_b)
+        st.caption(leg_v)
+        st.download_button("Baixar vídeo (MP4)", data=vid_b, file_name="rener_video_curto.mp4", mime="video/mp4", use_container_width=True)
     if st.button("Voltar para o chat"):
         st.session_state.menu_aba = "Chat"
         st.rerun()
@@ -536,7 +683,12 @@ else:
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+            if message.get("content"):
+                st.markdown(message["content"])
+            if message.get("image"):
+                st.image(message["image"], use_container_width=True)
+            if message.get("video"):
+                st.video(message["video"])
 
     if prompt := st.chat_input("Peça ao Rener"):
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -544,34 +696,59 @@ else:
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner("Pensando..."):
-                try:
-                    mensagens_enviadas = [system_prompt] + [
-                        {"role": m["role"], "content": m["content"]} for m in st.session_state.messages[:-1]
-                    ]
+            tipo_midia = detectar_pedido_midia(prompt)
+            assunto_midia = limpar_prompt_midia(prompt)
 
-                    if precisa_pesquisar_na_web(prompt):
-                        resultados_web = pesquisar_na_internet(prompt)
-                        if resultados_web:
-                            mensagem_envio = (
-                                f"Mensagem do usuário: {prompt}\n\n"
-                                f"Dados da busca na internet:\n{resultados_web}\n\n"
-                                "Responda de forma natural e humana, usando os dados quando ajudarem."
-                            )
+            if tipo_midia == "image":
+                with st.spinner("Criando imagem aqui no Rener..."):
+                    img_bytes = gerar_bytes_imagem(assunto_midia)
+                    st.session_state.ultima_imagem_gerada = (assunto_midia, img_bytes)
+                    texto_resp = f"Pronto! Criei essa imagem de **{assunto_midia}** direto aqui no Rener:"
+                    st.markdown(texto_resp)
+                    st.image(img_bytes, use_container_width=True)
+                    st.session_state.messages.append({"role": "assistant", "content": texto_resp, "image": img_bytes})
+
+            elif tipo_midia == "video":
+                with st.spinner("Criando vídeo curto aqui no Rener..."):
+                    img_base = gerar_bytes_imagem(assunto_midia, largura=840, altura=840)
+                    mp4_bytes = gerar_video_curto_mp4(assunto_midia, imagem_bytes=img_base, segundos=4)
+                    st.session_state.ultimo_video_gerado = (assunto_midia, mp4_bytes)
+                    texto_resp = f"Pronto! Montei esse vídeo curto de **4s** sobre **{assunto_midia}** direto aqui no Rener:"
+                    st.markdown(texto_resp)
+                    st.video(mp4_bytes)
+                    st.session_state.messages.append({"role": "assistant", "content": texto_resp, "video": mp4_bytes})
+
+            else:
+                with st.spinner("Pensando..."):
+                    try:
+                        mensagens_enviadas = [system_prompt] + [
+                            {"role": m["role"], "content": m["content"]}
+                            for m in st.session_state.messages[:-1]
+                            if m.get("content")
+                        ]
+
+                        if precisa_pesquisar_na_web(prompt):
+                            resultados_web = pesquisar_na_internet(prompt)
+                            if resultados_web:
+                                mensagem_envio = (
+                                    f"Mensagem do usuário: {prompt}\n\n"
+                                    f"Dados da busca na internet:\n{resultados_web}\n\n"
+                                    "Responda de forma natural e humana, usando os dados quando ajudarem."
+                                )
+                            else:
+                                mensagem_envio = prompt
                         else:
                             mensagem_envio = prompt
-                    else:
-                        mensagem_envio = prompt
 
-                    mensagens_enviadas.append({"role": "user", "content": mensagem_envio})
+                        mensagens_enviadas.append({"role": "user", "content": mensagem_envio})
 
-                    chat_completion = client.chat.completions.create(
-                        model="openai/gpt-oss-20b",
-                        messages=mensagens_enviadas,
-                        tool_choice="none",
-                    )
-                    response = chat_completion.choices[0].message.content
-                    st.markdown(response)
-                    st.session_state.messages.append({"role": "assistant", "content": response})
-                except Exception as e:
-                    st.error(f"Erro: {e}")
+                        chat_completion = client.chat.completions.create(
+                            model="openai/gpt-oss-20b",
+                            messages=mensagens_enviadas,
+                            tool_choice="none",
+                        )
+                        response = chat_completion.choices[0].message.content
+                        st.markdown(response)
+                        st.session_state.messages.append({"role": "assistant", "content": response})
+                    except Exception as e:
+                        st.error(f"Erro: {e}")
