@@ -1,48 +1,82 @@
-import streamlit as st
+import base64
+from pathlib import Path
 from groq import Groq
+import streamlit as st
 
 st.set_page_config(page_title="Rener", page_icon="✨", layout="centered")
 
-st.markdown(
+
+def carregar_fundo_base64(caminho_imagem: str) -> str:
+    caminho = Path(caminho_imagem)
+    if caminho.exists():
+        dados = caminho.read_bytes()
+        b64 = base64.b64encode(dados).decode("utf-8")
+        return f"data:image/png;base64,{b64}"
+    return ""
+
+
+bg_data_uri = carregar_fundo_base64("fundo.png")
+
+if bg_data_uri:
+    fundo_css = f"""
+        .stApp {{
+            background:
+                linear-gradient(rgba(5, 8, 17, 0.72), rgba(5, 8, 17, 0.82)),
+                url("{bg_data_uri}") center center / cover no-repeat fixed !important;
+            color: #f3f4f6;
+        }}
     """
-    <style>
+else:
+    fundo_css = """
         .stApp {
             background: radial-gradient(circle at 50% 20%, #0d1d42 0%, #050507 62%);
             color: #f3f4f6;
         }
-        [data-testid="stSidebar"] {
+    """
+
+st.markdown(
+    f"""
+    <style>
+        {fundo_css}
+
+        [data-testid="stSidebar"] {{
             background-color: #090a0d;
             border-right: 1px solid rgba(255, 255, 255, 0.08);
-        }
-        .hero-box {
+        }}
+        .hero-box {{
             text-align: center;
             padding: 36px 12px 24px 12px;
-        }
-        .hero-sparkle {
+            background: rgba(5, 8, 17, 0.45);
+            border-radius: 24px;
+            backdrop-filter: blur(4px);
+        }}
+        .hero-sparkle {{
             font-size: 36px;
             margin-bottom: 10px;
-        }
-        .hero-title {
+        }}
+        .hero-title {{
             font-size: 28px;
             font-weight: 600;
             color: #ffffff;
             margin: 0;
-        }
-        .hero-sub {
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+        }}
+        .hero-sub {{
             font-size: 14px;
-            color: #9ca3af;
+            color: #e2e8f0;
             margin-top: 6px;
-        }
+            text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
+        }}
 
         /* Esconde avatares/ícones padrão de usuário e robô no chat */
         [data-testid="stChatMessageAvatarUser"],
         [data-testid="stChatMessageAvatarAssistant"],
-        [data-testid="stChatMessage"] > div:first-child {
+        [data-testid="stChatMessage"] > div:first-child {{
             display: none !important;
-        }
+        }}
 
         /* Container base de cada mensagem */
-        [data-testid="stChatMessage"] {
+        [data-testid="stChatMessage"] {{
             background: transparent !important;
             border: none !important;
             box-shadow: none !important;
@@ -50,71 +84,72 @@ st.markdown(
             margin-bottom: 10px !important;
             display: flex !important;
             width: 100% !important;
-        }
+        }}
 
         /* Mensagem do usuário à direita em formato arredondado */
         [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]),
-        [data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) {
+        [data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) {{
             justify-content: flex-end !important;
-        }
+        }}
 
         [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"],
-        [data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) [data-testid="stChatMessageContent"] {
+        [data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) [data-testid="stChatMessageContent"] {{
             background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%) !important;
             color: #ffffff !important;
-            border: 1px solid rgba(255, 255, 255, 0.25) !important;
+            border: 1px solid rgba(255, 255, 255, 0.35) !important;
             border-radius: 24px 24px 6px 24px !important;
             padding: 10px 16px !important;
             max-width: 82% !important;
-            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35) !important;
-        }
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5) !important;
+        }}
 
         /* Resposta da IA à esquerda */
         [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]),
-        [data-testid="stChatMessage"]:has([aria-label="Chat message from assistant"]) {
+        [data-testid="stChatMessage"]:has([aria-label="Chat message from assistant"]) {{
             justify-content: flex-start !important;
-        }
+        }}
 
         [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) [data-testid="stChatMessageContent"],
-        [data-testid="stChatMessage"]:has([aria-label="Chat message from assistant"]) [data-testid="stChatMessageContent"] {
-            background: rgba(20, 26, 42, 0.55) !important;
-            color: #f3f4f6 !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        [data-testid="stChatMessage"]:has([aria-label="Chat message from assistant"]) [data-testid="stChatMessageContent"] {{
+            background: rgba(9, 13, 24, 0.78) !important;
+            color: #f8fafc !important;
+            border: 1px solid rgba(255, 255, 255, 0.16) !important;
             border-radius: 8px 22px 22px 22px !important;
             padding: 10px 16px !important;
             max-width: 88% !important;
-        }
+            backdrop-filter: blur(6px);
+        }}
 
         /* Rodapé transparente */
         [data-testid="stBottom"],
         [data-testid="stBottom"] > div,
-        [data-testid="stBottom"] > div > div {
+        [data-testid="stBottom"] > div > div {{
             background: transparent !important;
             background-color: transparent !important;
             border: none !important;
             box-shadow: none !important;
-        }
+        }}
 
         /* Contorno branco bem visível no bloco de entrada */
-        [data-testid="stChatInput"] {
-            background-color: #141926 !important;
+        [data-testid="stChatInput"] {{
+            background-color: rgba(14, 19, 32, 0.92) !important;
             border: 2px solid #ffffff !important;
             border-radius: 999px !important;
             padding: 4px 10px 4px 16px !important;
-            box-shadow: 0 0 12px rgba(255, 255, 255, 0.25) !important;
-        }
+            box-shadow: 0 0 14px rgba(255, 255, 255, 0.28) !important;
+        }}
 
         [data-testid="stChatInput"] > div,
         [data-testid="stChatInput"] > div > div,
         [data-testid="stChatInput"] [data-baseweb="textarea"],
-        [data-testid="stChatInput"] [data-baseweb="base-input"] {
+        [data-testid="stChatInput"] [data-baseweb="base-input"] {{
             background: transparent !important;
             background-color: transparent !important;
             border: none !important;
             box-shadow: none !important;
-        }
+        }}
 
-        [data-testid="stChatInput"] textarea {
+        [data-testid="stChatInput"] textarea {{
             background: transparent !important;
             background-color: transparent !important;
             color: #ffffff !important;
@@ -122,25 +157,25 @@ st.markdown(
             font-size: 15px !important;
             border: none !important;
             box-shadow: none !important;
-        }
+        }}
 
-        [data-testid="stChatInput"] textarea::placeholder {
+        [data-testid="stChatInput"] textarea::placeholder {{
             color: #e2e8f0 !important;
             opacity: 1 !important;
-        }
+        }}
 
-        [data-testid="stChatInput"] button {
+        [data-testid="stChatInput"] button {{
             background-color: #2563eb !important;
             color: #ffffff !important;
             border-radius: 999px !important;
             border: 1.5px solid #ffffff !important;
             min-width: 38px !important;
             height: 38px !important;
-        }
+        }}
 
-        [data-testid="stChatInput"] button:hover {
+        [data-testid="stChatInput"] button:hover {{
             background-color: #3b82f6 !important;
-        }
+        }}
     </style>
     """,
     unsafe_allow_html=True,
