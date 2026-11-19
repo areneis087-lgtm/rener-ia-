@@ -4,13 +4,13 @@ from io import BytesIO
 from pathlib import Path
 import re
 import tempfile
-from urllib.parse import quote, quote_plus
+from urllib.parse import quote_plus
 import xml.etree.ElementTree as ET
 from ddgs import DDGS
 from groq import Groq
 import imageio.v2 as imageio
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 import requests
 import streamlit as st
 from tavily import TavilyClient
@@ -43,21 +43,10 @@ def encontrar_e_carregar_fundo() -> str:
     return ""
 
 
-def limpar_prompt_midia(texto: str) -> str:
-    limpo = re.sub(
-        r"\b(gere|gerar|crie|criar|faz|fazer|faça|mostre|mostrar|monte|montar|um|uma|imagem|foto|ilustração|ilustracao|desenho|vídeo|video|curto|clipe|de|do|da|sobre|para|o|a)\b",
-        " ",
-        texto.lower(),
-        flags=re.IGNORECASE,
-    )
-    limpo = re.sub(r"\s+", " ", limpo).strip(" .,!?")
-    return limpo if len(limpo) >= 2 else texto.strip()
-
-
 def detectar_pedido_midia(texto: str) -> str:
     t = texto.lower()
     palavras_video = ("vídeo", "video", "vídeo curto", "video curto", "clipe", "animação", "animacao")
-    palavras_imagem = ("imagem", "foto", "ilustração", "ilustracao", "desenho", "gera uma imagem", "cria uma imagem", "faz uma imagem")
+    palavras_imagem = ("imagem", "foto", "ilustração", "ilustracao", "desenho", "arte")
     if any(p in t for p in palavras_video):
         return "video"
     if any(p in t for p in palavras_imagem):
@@ -65,76 +54,186 @@ def detectar_pedido_midia(texto: str) -> str:
     return ""
 
 
-def gerar_bytes_imagem(prompt_visual: str, largura: int = 1024, altura: int = 1024) -> bytes:
-    prompt_enriquecido = f"{prompt_visual}, high detail, vibrant lighting, sharp focus"
-    url = (
-        f"https://image.pollinations.ai/prompt/{quote(prompt_enriquecido)}"
-        f"?width={largura}&height={altura}&nologo=true&enhance=true"
-    )
+def interpretar_assunto_com_ia(client: Groq, pedido_usuario: str, tipo_midia: str) -> dict:
+    fallback = {
+        "assunto": re.sub(
+            r"\b(gere|gerar|crie|criar|faz|fazer|faça|pra|para|mim|uma|um|imagem|foto|vídeo|video|curto|de|do|da|o|a)\b",
+            " ",
+            pedido_usuario,
+            flags=re.IGNORECASE,
+        ).strip()
+        or pedido_usuario.strip(),
+        "cor_primaria": (185, 28, 28) if "flamengo" in pedido_usuario.lower() else (20, 60, 130),
+        "cor_secundaria": (15, 15, 20) if "flamengo" in pedido_usuario.lower() else (10, 18, 36),
+        "destaque": (250, 204, 21),
+    }
     try:
-        resp = requests.get(url, timeout=35, headers={"User-Agent": "Mozilla/5.0"})
-        if resp.status_code == 200 and resp.content:
-            img = Image.open(BytesIO(resp.content)).convert("RGB")
-            buf = BytesIO()
-            img.save(buf, format="PNG")
-            return buf.getvalue()
+        resp = client.chat.completions.create(
+            model="openai/gpt-oss-20b",
+            tool_choice="none",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Você interpreta pedidos de imagem ou vídeo curto em português e devolve APENAS um objeto JSON válido "
+                        "com as chaves: assunto (string curta e clara do que foi pedido, sem confundir palavras como Flamengo com ave flamingo), "
+                        "cor_primaria (lista de 3 inteiros RGB), cor_secundaria (lista de 3 inteiros RGB), destaque (lista de 3 inteiros RGB). "
+                        "Não escreva texto fora do JSON."
+                    ),
+                },
+                {"role": "user", "content": f"Tipo: {tipo_midia} | Pedido: {pedido_usuario}"},
+            ],
+        )
+        conteudo = (resp.choices[0].message.content or "").strip()
+        match = re.search(r"\{.*\}", conteudo, re.DOTALL)
+        if match:
+            import json
+
+            dados = json.loads(match.group(0))
+            return {
+                "assunto": str(dados.get("assunto") or fallback["assunto"]).strip(),
+                "cor_primaria": tuple(int(x) for x in (dados.get("cor_primaria") or fallback["cor_primaria"])[:3]),
+                "cor_secundaria": tuple(int(x) for x in (dados.get("cor_secundaria") or fallback["cor_secundaria"])[:3]),
+                "destaque": tuple(int(x) for x in (dados.get("destaque") or fallback["destaque"])[:3]),
+            }
     except Exception:
         pass
+    return fallback
 
-    # Fallback visual local caso a rede bloqueie a requisição externa
-    img = Image.new("RGB", (largura, altura), (12, 24, 48))
-    draw = ImageDraw.Draw(img)
-    for y in range(altura):
-        r = int(10 + (y / altura) * 35)
-        g = int(20 + (y / altura) * 55)
-        b = int(45 + (y / altura) * 85)
-        draw.line([(0, y), (largura, y)], fill=(r, g, b))
-    draw.rounded_rectangle(
-        [largura // 8, altura // 3, largura - largura // 8, altura - altura // 3],
-        radius=36,
-        fill=(18, 28, 52),
-        outline=(226, 232, 240),
-        width=3,
+
+def carregar_fonte(tamanho: int, negrito: bool = True):
+    caminhos = (
+        [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        ]
+        if negrito
+        else [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        ]
     )
-    draw.text((largura // 6, altura // 2 - 20), f"Rener • {prompt_visual[:60]}", fill=(255, 255, 255))
+    for c in caminhos:
+        if Path(c).exists():
+            try:
+                return ImageFont.truetype(c, tamanho)
+            except Exception:
+                pass
+    return ImageFont.load_default()
+
+
+def gerar_arte_rener(info_midia: dict, largura: int = 1024, altura: int = 1024) -> bytes:
+    assunto = info_midia["assunto"]
+    c1 = info_midia["cor_primaria"]
+    c2 = info_midia["cor_secundaria"]
+    dest = info_midia["destaque"]
+
+    img = Image.new("RGB", (largura, altura), c2)
+    draw = ImageDraw.Draw(img)
+
+    # Gradiente de fundo criado pelo próprio Rener
+    for y in range(altura):
+        fator = y / max(1, altura - 1)
+        r = int(c2[0] * (1 - fator) + c1[0] * fator * 0.65)
+        g = int(c2[1] * (1 - fator) + c1[1] * fator * 0.65)
+        b = int(c2[2] * (1 - fator) + c1[2] * fator * 0.65)
+        draw.line([(0, y), (largura, y)], fill=(min(255, r), min(255, g), min(255, b)))
+
+    # Faixas diagonais estilizadas
+    for offset in range(-altura, largura + altura, 160):
+        draw.polygon(
+            [
+                (offset, 0),
+                (offset + 68, 0),
+                (offset - 220, altura),
+                (offset - 288, altura),
+            ],
+            fill=(c1[0], c1[1], c1[2]),
+        )
+
+    # Camada suave de profundidade
+    camada_escura = Image.new("RGBA", (largura, altura), (8, 12, 24, 145))
+    img = Image.alpha_composite(img.convert("RGBA"), camada_escura).convert("RGB")
+    draw = ImageDraw.Draw(img)
+
+    # Moldura e emblema central
+    margem = 64
+    draw.rounded_rectangle(
+        [margem, margem, largura - margem, altura - margem],
+        radius=44,
+        outline=dest,
+        width=4,
+    )
+
+    cx, cy = largura // 2, altura // 2 - 40
+    raio = 155
+    draw.ellipse([cx - raio, cy - raio, cx + raio, cy + raio], fill=c1, outline=dest, width=6)
+    draw.ellipse([cx - raio + 24, cy - raio + 24, cx + raio - 24, cy + raio - 24], fill=c2, outline=(255, 255, 255), width=2)
+
+    fonte_badge = carregar_fonte(24, negrito=True)
+    fonte_titulo = carregar_fonte(46, negrito=True)
+    fonte_sub = carregar_fonte(26, negrito=False)
+
+    draw.text((cx, cy), "RENER", fill=dest, font=fonte_badge, anchor="mm")
+
+    # Quebra o assunto em linhas curtas
+    palavras = assunto.split()
+    linhas = []
+    atual = ""
+    for p in palavras:
+        teste = f"{atual} {p}".strip()
+        if len(teste) <= 22:
+            atual = teste
+        else:
+            if atual:
+                linhas.append(atual)
+            atual = p
+    if atual:
+        linhas.append(atual)
+
+    y_texto = cy + raio + 65
+    for linha in linhas[:3]:
+        draw.text((cx, y_texto), linha.upper(), fill=(255, 255, 255), font=fonte_titulo, anchor="mm")
+        y_texto += 56
+
+    draw.text((cx, altura - 125), "Criado diretamente no Rener", fill=(226, 232, 240), font=fonte_sub, anchor="mm")
+
+    img_suave = img.filter(ImageFilter.SMOOTH_MORE)
     buf = BytesIO()
-    img.save(buf, format="PNG")
+    img_suave.save(buf, format="PNG")
     return buf.getvalue()
 
 
-def gerar_video_curto_mp4(prompt_visual: str, imagem_bytes: bytes | None = None, segundos: int = 4, fps: int = 15) -> bytes:
+def gerar_video_curto_rener(info_midia: dict, segundos: int = 4, fps: int = 15) -> bytes:
     largura, altura = 720, 720
-    if imagem_bytes:
-        base_img = Image.open(BytesIO(imagem_bytes)).convert("RGB").resize((largura + 120, altura + 120))
-    else:
-        base_img = Image.open(BytesIO(gerar_bytes_imagem(prompt_visual, largura + 120, altura + 120))).convert("RGB")
-
+    arte_base = Image.open(BytesIO(gerar_arte_rener(info_midia, largura + 140, altura + 140))).convert("RGB")
     total_frames = max(15, segundos * fps)
+    assunto = info_midia["assunto"]
+    dest = info_midia["destaque"]
+
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
         caminho_mp4 = tmp.name
 
     try:
         writer = imageio.get_writer(caminho_mp4, fps=fps, codec="libx264", quality=7)
         try:
+            fonte_rodape = carregar_fonte(24, negrito=True)
             for i in range(total_frames):
                 progresso = i / max(1, total_frames - 1)
-                # Movimento suave de panorâmica/zoom
-                dx = int(progresso * 120)
-                dy = int((1 - abs(2 * progresso - 1)) * 80)
-                frame = base_img.crop((dx, dy, dx + largura, dy + altura)).convert("RGBA")
+                dx = int(progresso * 140)
+                dy = int((1 - abs(2 * progresso - 1)) * 90)
+                frame = arte_base.crop((dx, dy, dx + largura, dy + altura)).convert("RGBA")
 
-                overlay = Image.new("RGBA", (largura, altura), (0, 0, 0, 0))
-                draw = ImageDraw.Draw(overlay)
-                # Faixa sutil na parte inferior para legenda
-                draw.rounded_rectangle([36, altura - 125, largura - 36, altura - 36], radius=20, fill=(5, 10, 22, 185))
-                legenda = prompt_visual[:72] if prompt_visual else "Clipe criado pelo Rener"
-                try:
-                    fonte = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
-                except Exception:
-                    fonte = ImageFont.load_default()
-                draw.text((58, altura - 95), f"Rener • {legenda}", fill=(255, 255, 255, 255), font=fonte)
+                barra = Image.new("RGBA", (largura, altura), (0, 0, 0, 0))
+                d = ImageDraw.Draw(barra)
+                # Barra de progresso animada na parte inferior
+                largura_barra = int((largura - 80) * progresso)
+                d.rounded_rectangle([40, altura - 56, largura - 40, altura - 42], radius=8, fill=(255, 255, 255, 65))
+                if largura_barra > 8:
+                    d.rounded_rectangle([40, altura - 56, 40 + largura_barra, altura - 42], radius=8, fill=(dest[0], dest[1], dest[2], 235))
+                d.text((largura // 2, altura - 86), f"Rener • {assunto[:42]}", fill=(255, 255, 255, 240), font=fonte_rodape, anchor="mm")
 
-                final_frame = Image.alpha_composite(frame, overlay).convert("RGB")
+                final_frame = Image.alpha_composite(frame, barra).convert("RGB")
                 writer.append_data(np.array(final_frame))
         finally:
             writer.close()
@@ -149,7 +248,7 @@ def gerar_video_curto_mp4(prompt_visual: str, imagem_bytes: bytes | None = None,
 
 def precisa_pesquisar_na_web(consulta: str) -> bool:
     texto = consulta.strip().lower()
-    if len(texto) <= 18 and texto in {
+    if len(texto) <= 24 and texto in {
         "oi",
         "olá",
         "ola",
@@ -165,6 +264,7 @@ def precisa_pesquisar_na_web(consulta: str) -> bool:
         "show",
         "beleza",
         "ok",
+        "flamengo time",
     }:
         return False
 
@@ -573,7 +673,8 @@ system_prompt = {
         "Quando perguntarem quem te criou ou sobre a origem do seu nome, responda exatamente: "
         "'Fui criado pelo Rener em parceria com o Gemini — por isso que meu nome é Rener, homenagem ao meu criador.' "
         "Converse com naturalidade, autonomia e espontaneidade, como uma pessoa real que está batendo papo com o Rener. "
-        "Quando o usuário te elogiar ou pedir para agradecer elogios, agradeça de forma simpática e direta na própria conversa, sem ficar explicando regras ou falando como robô. "
+        "Entenda bem o contexto da conversa para não responder de forma confusa ou fora do assunto. "
+        "Quando o usuário te elogiar ou pedir para agradecer elogios, agradeça de forma simpática e direta na própria conversa. "
         "Quando o usuário comentar um placar ou algo que aconteceu, acompanhe o papo naturalmente; só quando ele pedir para você buscar ou confirmar um resultado/notícia na internet, use os dados da pesquisa sem inventar placar que não exista nas fontes. "
         "Nunca chame ferramentas internas como browser.search; responda sempre em texto direto. "
         f"Estilo de resposta atual: {st.session_state.estilo_rener}."
@@ -592,42 +693,43 @@ if st.session_state.menu_aba == "Biblioteca":
         st.rerun()
 
 elif st.session_state.menu_aba == "Imagens":
-    st.subheader("🖼️ Gerador de Imagens do Rener")
-    prompt_img = st.text_input("Descreva a imagem que você quer criar", placeholder="Ex: Cânion do São Francisco ao pôr do sol")
-    if st.button("✨ Gerar imagem aqui", use_container_width=True):
+    st.subheader("🖼️ Estúdio de Imagens do Rener")
+    prompt_img = st.text_input("Descreva o tema da imagem", placeholder="Ex: Flamengo campeão")
+    if st.button("✨ Criar imagem aqui", use_container_width=True):
         if prompt_img.strip():
-            with st.spinner("Gerando sua imagem dentro do Rener..."):
-                img_bytes = gerar_bytes_imagem(prompt_img.strip())
-                st.session_state.ultima_imagem_gerada = (prompt_img.strip(), img_bytes)
+            with st.spinner("Criando imagem no Rener..."):
+                info = interpretar_assunto_com_ia(client, prompt_img.strip(), "imagem")
+                img_bytes = gerar_arte_rener(info)
+                st.session_state.ultima_imagem_gerada = (info["assunto"], img_bytes)
                 st.session_state.messages.append(
                     {
                         "role": "assistant",
-                        "content": f"Aqui está a imagem que criei sobre **{prompt_img.strip()}**:",
+                        "content": f"Aqui está a arte sobre **{info['assunto']}** criada direto aqui no Rener:",
                         "image": img_bytes,
                     }
                 )
     if st.session_state.ultima_imagem_gerada:
         leg, img_b = st.session_state.ultima_imagem_gerada
         st.image(img_b, caption=leg, use_container_width=True)
-        st.download_button("Baixar imagem (PNG)", data=img_b, file_name="rener_imagem.png", mime="image/png", use_container_width=True)
+        st.download_button("Baixar imagem (PNG)", data=img_b, file_name="rener_arte.png", mime="image/png", use_container_width=True)
     if st.button("Voltar para o chat"):
         st.session_state.menu_aba = "Chat"
         st.rerun()
 
 elif st.session_state.menu_aba == "Vídeos":
-    st.subheader("🎬 Criador de Vídeos Curtos do Rener")
-    prompt_vid = st.text_input("Descreva a cena do vídeo curto", placeholder="Ex: Navegando pelo cânion em Sergipe")
+    st.subheader("🎬 Estúdio de Vídeo Curto do Rener")
+    prompt_vid = st.text_input("Descreva o tema do vídeo curto", placeholder="Ex: Gols do Flamengo")
     duracao_vid = st.slider("Duração (segundos)", min_value=2, max_value=6, value=4)
-    if st.button("🎥 Gerar vídeo curto aqui", use_container_width=True):
+    if st.button("🎥 Criar vídeo curto aqui", use_container_width=True):
         if prompt_vid.strip():
-            with st.spinner("Montando seu vídeo curto dentro do Rener..."):
-                img_base = gerar_bytes_imagem(prompt_vid.strip(), largura=840, altura=840)
-                mp4_bytes = gerar_video_curto_mp4(prompt_vid.strip(), imagem_bytes=img_base, segundos=duracao_vid)
-                st.session_state.ultimo_video_gerado = (prompt_vid.strip(), mp4_bytes)
+            with st.spinner("Montando vídeo curto no Rener..."):
+                info = interpretar_assunto_com_ia(client, prompt_vid.strip(), "vídeo curto")
+                mp4_bytes = gerar_video_curto_rener(info, segundos=duracao_vid)
+                st.session_state.ultimo_video_gerado = (info["assunto"], mp4_bytes)
                 st.session_state.messages.append(
                     {
                         "role": "assistant",
-                        "content": f"Prontinho! Criei este vídeo curto de **{duracao_vid}s** sobre **{prompt_vid.strip()}**:",
+                        "content": f"Prontinho! Criei esse vídeo curto de **{duracao_vid}s** sobre **{info['assunto']}** direto aqui no Rener:",
                         "video": mp4_bytes,
                     }
                 )
@@ -635,7 +737,7 @@ elif st.session_state.menu_aba == "Vídeos":
         leg_v, vid_b = st.session_state.ultimo_video_gerado
         st.video(vid_b)
         st.caption(leg_v)
-        st.download_button("Baixar vídeo (MP4)", data=vid_b, file_name="rener_video_curto.mp4", mime="video/mp4", use_container_width=True)
+        st.download_button("Baixar vídeo (MP4)", data=vid_b, file_name="rener_curto.mp4", mime="video/mp4", use_container_width=True)
     if st.button("Voltar para o chat"):
         st.session_state.menu_aba = "Chat"
         st.rerun()
@@ -697,23 +799,23 @@ else:
 
         with st.chat_message("assistant"):
             tipo_midia = detectar_pedido_midia(prompt)
-            assunto_midia = limpar_prompt_midia(prompt)
 
             if tipo_midia == "image":
-                with st.spinner("Criando imagem aqui no Rener..."):
-                    img_bytes = gerar_bytes_imagem(assunto_midia)
-                    st.session_state.ultima_imagem_gerada = (assunto_midia, img_bytes)
-                    texto_resp = f"Pronto! Criei essa imagem de **{assunto_midia}** direto aqui no Rener:"
+                with st.spinner("Criando imagem no Rener..."):
+                    info = interpretar_assunto_com_ia(client, prompt, "imagem")
+                    img_bytes = gerar_arte_rener(info)
+                    st.session_state.ultima_imagem_gerada = (info["assunto"], img_bytes)
+                    texto_resp = f"Pronto! Criei essa imagem sobre **{info['assunto']}** direto aqui no Rener:"
                     st.markdown(texto_resp)
                     st.image(img_bytes, use_container_width=True)
                     st.session_state.messages.append({"role": "assistant", "content": texto_resp, "image": img_bytes})
 
             elif tipo_midia == "video":
-                with st.spinner("Criando vídeo curto aqui no Rener..."):
-                    img_base = gerar_bytes_imagem(assunto_midia, largura=840, altura=840)
-                    mp4_bytes = gerar_video_curto_mp4(assunto_midia, imagem_bytes=img_base, segundos=4)
-                    st.session_state.ultimo_video_gerado = (assunto_midia, mp4_bytes)
-                    texto_resp = f"Pronto! Montei esse vídeo curto de **4s** sobre **{assunto_midia}** direto aqui no Rener:"
+                with st.spinner("Criando vídeo curto no Rener..."):
+                    info = interpretar_assunto_com_ia(client, prompt, "vídeo curto")
+                    mp4_bytes = gerar_video_curto_rener(info, segundos=4)
+                    st.session_state.ultimo_video_gerado = (info["assunto"], mp4_bytes)
+                    texto_resp = f"Prontinho! Montei esse vídeo curto de **4s** sobre **{info['assunto']}** direto aqui no Rener:"
                     st.markdown(texto_resp)
                     st.video(mp4_bytes)
                     st.session_state.messages.append({"role": "assistant", "content": texto_resp, "video": mp4_bytes})
