@@ -1,4 +1,6 @@
-streamlit
+fastapi
+uvicorn[standard]
+python-multipart
 groq
 requests
 pillow
@@ -7,4 +9,3 @@ ddgs
 imageio
 imageio-ffmpeg
 numpy
-streamlit-mic-recorder
