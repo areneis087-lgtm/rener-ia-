@@ -11,7 +11,9 @@ def carregar_fundo_base64(caminho_imagem: str) -> str:
     if caminho.exists():
         dados = caminho.read_bytes()
         b64 = base64.b64encode(dados).decode("utf-8")
-        return f"data:image/png;base64,{b64}"
+        ext = caminho.suffix.lower().lstrip(".")
+        mime = "image/jpeg" if ext in ("jpg", "jpeg") else "image/png"
+        return f"data:{mime};base64,{b64}"
     return ""
 
 
@@ -21,7 +23,7 @@ if bg_data_uri:
     fundo_css = f"""
         .stApp {{
             background:
-                linear-gradient(rgba(5, 8, 17, 0.72), rgba(5, 8, 17, 0.82)),
+                linear-gradient(rgba(5, 8, 17, 0.68), rgba(5, 8, 17, 0.78)),
                 url("{bg_data_uri}") center center / cover no-repeat fixed !important;
             color: #f3f4f6;
         }}
@@ -96,11 +98,11 @@ st.markdown(
         [data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) [data-testid="stChatMessageContent"] {{
             background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%) !important;
             color: #ffffff !important;
-            border: 1px solid rgba(255, 255, 255, 0.35) !important;
+            border: 1px solid rgba(255, 255, 255, 0.25) !important;
             border-radius: 24px 24px 6px 24px !important;
             padding: 10px 16px !important;
             max-width: 82% !important;
-            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5) !important;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35) !important;
         }}
 
         /* Resposta da IA à esquerda */
