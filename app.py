@@ -102,6 +102,7 @@ def detectar_pedido_midia(texto: str) -> str:
     palavras_imagem = (
         "imagem",
         "foto",
+        "fotografia",
         "ilustração",
         "ilustracao",
         "desenho",
@@ -111,6 +112,7 @@ def detectar_pedido_midia(texto: str) -> str:
         "retrato",
         "wallpaper",
         "papel de parede",
+        "4k",
         "gera uma",
         "gere uma",
         "cria uma",
@@ -124,12 +126,26 @@ def detectar_pedido_midia(texto: str) -> str:
         "faz um",
         "faça um",
         "mostra uma",
+        "mostra um",
         "quero ver um",
         "quero ver uma",
     )
     if any(p in t for p in palavras_imagem):
         return "image"
     return ""
+
+
+def detectar_dimensoes_pedido(pedido_usuario: str, padrao_w: int = 1536, padrao_h: int = 1536) -> tuple[int, int]:
+    t = pedido_usuario.lower()
+    pede_4k = "4k" in t or "ultra hd" in t or "uhd" in t
+    pede_paisagem = any(p in t for p in ("paisagem", "widescreen", "horizontal", "banner", "cinematográfico", "cinematografico"))
+    pede_vertical = any(p in t for p in ("vertical", "stories", "story", "celular", "portrait", "wall"))
+
+    if pede_vertical:
+        return (1080, 1920) if pede_4k else (1024, 1536)
+    if pede_paisagem or pede_4k:
+        return (1920, 1080) if pede_4k else (1536, 1024)
+    return (padrao_w, padrao_h)
 
 
 def formatar_historico_curto(mensagens: list[dict], limite: int = 8) -> str:
@@ -150,8 +166,9 @@ def planejar_cena_com_ia(
 ) -> dict:
     fallback = {
         "prompt_visual": (
-            f"{pedido_usuario}, sharp focus, high resolution, realistic lighting, "
-            "accurate subject details, rich textures, clean composition, no text, no watermark"
+            f"candid real-life photograph of {pedido_usuario}, shot on professional full-frame DSLR camera, "
+            "natural lighting, sharp focus on subject, authentic real-world textures, true-to-life anatomy and details, "
+            "no cartoon, no illustration, no anime, no 3d render, no artificial look, no text, no watermark"
         ),
         "cor_a": (25, 35, 55),
         "cor_b": (15, 20, 32),
@@ -166,20 +183,18 @@ def planejar_cena_com_ia(
                 {
                     "role": "system",
                     "content": (
-                        "Você é um diretor visual especialista em todas as áreas do conhecimento: "
-                        "esportes, times, seleções, animais, natureza, filmes, séries, personagens, história, "
-                        "ciência, espaço, tecnologia, veículos, arquitetura, gastronomia e cenas cotidianas.\n"
-                        "Sua tarefa é compreender perfeitamente o que o usuário pediu (associando ao histórico da conversa "
-                        "quando houver referências como 'disso', 'dele', 'agora em vídeo', 'outro ângulo') e traduzir "
-                        "isso em uma descrição visual fiel, específica e altamente nítida.\n"
-                        "Regras:\n"
-                        "1. Identifique o sujeito principal exato (sem trocar o tema por outra coisa).\n"
-                        "2. Se pedir um símbolo, logo, bandeira ou escudo isolado, descreva apenas o emblema centralizado "
-                        "sobre fundo limpo, sem pessoas ao redor.\n"
-                        "3. Se pedir uma cena, animal, filme, lugar ou objeto, descreva anatomia/forma fiel, ambiente autêntico, "
-                        "iluminação realista, foco nítido e texturas detalhadas.\n"
-                        "4. Nunca inclua texto escrito, legendas ou marcas d'água na descrição.\n"
-                        "Retorne APENAS um JSON válido com as chaves:\n"
+                        "Você é o diretor visual do Rener. Sua missão é entender exatamente o que o usuário pediu "
+                        "(considerando o contexto recente da conversa quando houver referência como 'disso', 'dele' ou "
+                        "'mesmo tema') e gerar uma descrição visual fotográfica, nítida e fiel ao mundo real.\n"
+                        "Diretrizes obrigatórias:\n"
+                        "1. Foque exatamente no que foi pedido — se pedir um animal real (ex.: gato de verdade), "
+                        "descreva um animal real com pelo, olhos, postura e ambiente fotográfico autêntico.\n"
+                        "2. Por padrão, o estilo deve ser fotografia real de câmera profissional, nítida, com iluminação "
+                        "natural e texturas reais — nunca estilo desenho animado, ilustração bizarra, pintura ou 3D estranho, "
+                        "a menos que o usuário peça explicitamente um desenho ou ilustração.\n"
+                        "3. Se o usuário mencionar '4k', priorize altíssima nitidez, microdetalhes reais e foco preciso.\n"
+                        "4. Nunca inclua palavras, letras, legendas, logos ou marcas d'água na imagem.\n"
+                        "Retorne APENAS um JSON válido com:\n"
                         "prompt_visual (descrição detalhada em inglês), "
                         "cor_a (3 inteiros RGB), cor_b (3 inteiros RGB), cor_c (3 inteiros RGB)."
                     ),
@@ -187,8 +202,8 @@ def planejar_cena_com_ia(
                 {
                     "role": "user",
                     "content": (
-                        f"Contexto recente da conversa:\n{contexto_str or '(início da conversa)'}\n\n"
-                        f"Formato desejado: {tipo_midia}\n"
+                        f"Contexto recente:\n{contexto_str or '(início da conversa)'}\n\n"
+                        f"Tipo de mídia: {tipo_midia}\n"
                         f"Pedido do usuário: {pedido_usuario}"
                     ),
                 },
@@ -210,49 +225,75 @@ def planejar_cena_com_ia(
     return fallback
 
 
-def gerar_imagem_alta_qualidade(
-    info_cena: dict,
-    pollinations_key: str = "",
-    largura: int = 1024,
-    altura: int = 1024,
-) -> bytes:
-    prompt_visual = info_cena.get("prompt_visual", "cinematic scene, sharp focus, high detail")
-    prompt_nitido = (
-        f"{prompt_visual}, sharp focus, high clarity, crisp details, natural lighting, "
-        "no blur, no text, no watermark, no logo"
-    )
+def _requisitar_imagem_pollinations(
+    prompt_final: str,
+    pollinations_key: str,
+    largura: int,
+    altura: int,
+    timeout_seg: int = 50,
+) -> Image.Image | None:
     param_chave = f"&key={quote(pollinations_key)}" if pollinations_key else ""
     url = (
-        f"https://image.pollinations.ai/prompt/{quote(prompt_nitido)}"
+        f"https://image.pollinations.ai/prompt/{quote(prompt_final)}"
         f"?width={largura}&height={altura}&model=flux&nologo=true&enhance=true{param_chave}"
     )
     headers = {"User-Agent": "Mozilla/5.0"}
     if pollinations_key:
         headers["Authorization"] = f"Bearer {pollinations_key}"
 
-    try:
-        resp = requests.get(url, timeout=45, headers=headers)
-        if resp.status_code == 200 and resp.content:
-            img = Image.open(BytesIO(resp.content)).convert("RGB")
-            img = recortar_bordas_imagem(img).filter(ImageFilter.SHARPEN)
-            buf = BytesIO()
-            img.save(buf, format="PNG")
-            return buf.getvalue()
-    except Exception:
-        pass
+    resp = requests.get(url, timeout=timeout_seg, headers=headers)
+    if resp.status_code == 200 and resp.content:
+        img = Image.open(BytesIO(resp.content)).convert("RGB")
+        if img.size[0] >= 120 and img.size[1] >= 120:
+            return img
+    return None
+
+
+def gerar_imagem_alta_qualidade(
+    info_cena: dict,
+    pollinations_key: str = "",
+    pedido_original: str = "",
+    largura: int = 1536,
+    altura: int = 1536,
+) -> bytes:
+    if pedido_original:
+        largura, altura = detectar_dimensoes_pedido(pedido_original, largura, altura)
+
+    prompt_visual = info_cena.get("prompt_visual", "real life photograph, sharp focus, high detail")
+    prompt_4k_real = (
+        f"{prompt_visual}, 4k uhd resolution, ultra sharp focus, crisp natural detail, "
+        "real photography, no cartoon, no drawing, no blur, no text, no watermark, no logo"
+    )
+
+    tentativas_dimensoes = [
+        (largura, altura, 50),
+        (min(largura, 1280), min(altura, 1280), 40),
+        (1024, 1024, 35),
+    ]
+
+    for w, h, t_out in tentativas_dimensoes:
+        try:
+            img = _requisitar_imagem_pollinations(prompt_4k_real, pollinations_key, w, h, t_out)
+            if img is not None:
+                img = recortar_bordas_imagem(img).filter(ImageFilter.SHARPEN)
+                buf = BytesIO()
+                img.save(buf, format="PNG")
+                return buf.getvalue()
+        except Exception:
+            continue
 
     ca = info_cena.get("cor_a", (24, 38, 68))
     cb = info_cena.get("cor_b", (10, 15, 26))
     cc = info_cena.get("cor_c", (210, 45, 55))
-    img = Image.new("RGB", (largura, altura), cb)
+    img = Image.new("RGB", (1024, 1024), cb)
     draw = ImageDraw.Draw(img)
-    for y in range(altura):
-        t = y / max(1, altura - 1)
+    for y in range(1024):
+        t = y / 1023
         r = int(cb[0] * (1 - t) + ca[0] * t)
         g = int(cb[1] * (1 - t) + ca[1] * t)
         b = int(cb[2] * (1 - t) + ca[2] * t)
-        draw.line([(0, y), (largura, y)], fill=(r, g, b))
-    cx, cy = largura // 2, altura // 2
+        draw.line([(0, y), (1024, y)], fill=(r, g, b))
+    cx, cy = 512, 512
     for raio, alpha_cor in [(340, cc), (240, ca), (140, (240, 244, 248))]:
         draw.ellipse([cx - raio, cy - raio, cx + raio, cy + raio], outline=alpha_cor, width=6)
     img = recortar_bordas_imagem(img.filter(ImageFilter.SHARPEN))
@@ -264,6 +305,7 @@ def gerar_imagem_alta_qualidade(
 def gerar_video_curto_rener(
     info_cena: dict,
     pollinations_key: str = "",
+    pedido_original: str = "",
     segundos: int = 4,
     fps: int = 15,
 ) -> bytes:
@@ -271,6 +313,7 @@ def gerar_video_curto_rener(
     img_bytes = gerar_imagem_alta_qualidade(
         info_cena,
         pollinations_key=pollinations_key,
+        pedido_original=pedido_original,
         largura=largura + 140,
         altura=altura + 140,
     )
@@ -728,10 +771,9 @@ system_prompt = {
         "Seu criador também se chama Rener, e ele montou este aplicativo junto com o Gemini. "
         "Quando perguntarem quem te criou ou sobre a origem do seu nome, responda exatamente: "
         "'Fui criado pelo Rener em parceria com o Gemini — por isso que meu nome é Rener, homenagem ao meu criador.' "
-        "Você domina todos os assuntos com profundidade, clareza e precisão: esportes, cinema, séries, ciência, "
-        "história, tecnologia, programação, natureza, animais, cultura geral, estudos e tarefas do dia a dia. "
-        "Converse com naturalidade, autonomia e espontaneidade, conectando sempre a resposta atual com o que já foi "
-        "conversado antes para nunca perder o fio da meada. "
+        "Você entende perfeitamente qualquer assunto e qualquer pedido do usuário, conectando sempre o que está "
+        "sendo dito agora ao histórico da conversa. "
+        "Converse com naturalidade, autonomia e espontaneidade, como uma pessoa real que está batendo papo com o Rener. "
         "Quando o usuário te elogiar ou pedir para agradecer elogios, agradeça de forma simpática e direta na própria conversa. "
         "Quando o usuário pedir para buscar ou confirmar um resultado, fato recente ou notícia na internet, use os dados "
         "da pesquisa com exatidão sem inventar informações que não estejam nas fontes. "
@@ -753,12 +795,16 @@ if st.session_state.menu_aba == "Biblioteca":
 
 elif st.session_state.menu_aba == "Imagens":
     st.subheader("🖼️ Imagens")
-    prompt_img = st.text_input("O que você quer criar?", placeholder="Ex: Leão na savana, cena de ficção científica, paisagem...")
+    prompt_img = st.text_input("O que você quer criar?", placeholder="Ex: Gato de verdade em 4k, cachorro na praia...")
     if st.button("✨ Criar imagem", use_container_width=True):
         if prompt_img.strip():
             with st.spinner("Criando imagem..."):
                 info = planejar_cena_com_ia(client, prompt_img.strip(), "imagem", st.session_state.messages)
-                img_bytes = gerar_imagem_alta_qualidade(info, pollinations_key=pollinations_key)
+                img_bytes = gerar_imagem_alta_qualidade(
+                    info,
+                    pollinations_key=pollinations_key,
+                    pedido_original=prompt_img.strip(),
+                )
                 st.session_state.ultima_imagem_gerada = img_bytes
                 st.session_state.messages.append(
                     {
@@ -777,13 +823,18 @@ elif st.session_state.menu_aba == "Imagens":
 
 elif st.session_state.menu_aba == "Vídeos":
     st.subheader("🎬 Vídeos")
-    prompt_vid = st.text_input("O que você quer no vídeo curto?", placeholder="Ex: Lobo na neve, nave espacial, praia ao pôr do sol...")
+    prompt_vid = st.text_input("O que você quer no vídeo curto?", placeholder="Ex: Gato real em 4k, lobo na neve...")
     duracao_vid = st.slider("Duração (segundos)", min_value=2, max_value=6, value=4)
     if st.button("🎥 Criar vídeo curto", use_container_width=True):
         if prompt_vid.strip():
             with st.spinner("Criando vídeo curto..."):
                 info = planejar_cena_com_ia(client, prompt_vid.strip(), "vídeo curto", st.session_state.messages)
-                mp4_bytes = gerar_video_curto_rener(info, pollinations_key=pollinations_key, segundos=duracao_vid)
+                mp4_bytes = gerar_video_curto_rener(
+                    info,
+                    pollinations_key=pollinations_key,
+                    pedido_original=prompt_vid.strip(),
+                    segundos=duracao_vid,
+                )
                 st.session_state.ultimo_video_gerado = mp4_bytes
                 st.session_state.messages.append(
                     {
@@ -861,7 +912,11 @@ else:
             if tipo_midia == "image":
                 with st.spinner("Criando imagem..."):
                     info = planejar_cena_com_ia(client, prompt, "imagem", st.session_state.messages[:-1])
-                    img_bytes = gerar_imagem_alta_qualidade(info, pollinations_key=pollinations_key)
+                    img_bytes = gerar_imagem_alta_qualidade(
+                        info,
+                        pollinations_key=pollinations_key,
+                        pedido_original=prompt,
+                    )
                     st.session_state.ultima_imagem_gerada = img_bytes
                     texto_resp = "Aqui está:"
                     st.markdown(texto_resp)
@@ -871,7 +926,12 @@ else:
             elif tipo_midia == "video":
                 with st.spinner("Criando vídeo curto..."):
                     info = planejar_cena_com_ia(client, prompt, "vídeo curto", st.session_state.messages[:-1])
-                    mp4_bytes = gerar_video_curto_rener(info, pollinations_key=pollinations_key, segundos=4)
+                    mp4_bytes = gerar_video_curto_rener(
+                        info,
+                        pollinations_key=pollinations_key,
+                        pedido_original=prompt,
+                        segundos=4,
+                    )
                     st.session_state.ultimo_video_gerado = mp4_bytes
                     texto_resp = "Aqui está:"
                     st.markdown(texto_resp)
