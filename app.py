@@ -666,7 +666,7 @@ def ancorar_microfone_ao_lado_do_envio() -> None:
                 const bottomBar = doc.querySelector('[data-testid="stBottom"]');
                 const sendBtn = bottomBar ? bottomBar.querySelector('[data-testid="stChatInputSubmitButton"], [data-testid="stChatInput"] button') : null;
 
-                let rightPx = 68;
+                let rightPx = 64;
                 let bottomPx = 18;
 
                 if (sendBtn) {
@@ -674,8 +674,8 @@ def ancorar_microfone_ao_lado_do_envio() -> None:
                     if (rect.width > 0 && rect.height > 0) {
                         const vw = window.parent.innerWidth || doc.documentElement.clientWidth;
                         const vh = window.parent.innerHeight || doc.documentElement.clientHeight;
-                        rightPx = Math.max(54, Math.round(vw - rect.left + 8));
-                        bottomPx = Math.max(10, Math.round(vh - rect.bottom + (rect.height - 38) / 2));
+                        rightPx = Math.max(50, Math.round(vw - rect.left + 6));
+                        bottomPx = Math.max(10, Math.round(vh - rect.bottom + (rect.height - 34) / 2));
                     }
                 }
 
@@ -685,26 +685,26 @@ def ancorar_microfone_ao_lado_do_envio() -> None:
                     host.style.bottom = bottomPx + "px";
                     host.style.left = "auto";
                     host.style.top = "auto";
-                    host.style.width = "38px";
-                    host.style.height = "38px";
-                    host.style.minWidth = "38px";
-                    host.style.maxWidth = "38px";
+                    host.style.width = "34px";
+                    host.style.height = "34px";
+                    host.style.minWidth = "34px";
+                    host.style.maxWidth = "34px";
                     host.style.zIndex = "1002";
                     host.style.margin = "0";
                     host.style.padding = "0";
-                    host.style.background = "rgba(148, 163, 184, 0.24)";
-                    host.style.border = "1.5px solid #ffffff";
+                    host.style.background = "transparent";
+                    host.style.border = "none";
                     host.style.borderRadius = "999px";
                     host.style.overflow = "hidden";
                     host.style.display = "flex";
                     host.style.alignItems = "center";
                     host.style.justifyContent = "center";
-                    host.style.boxShadow = "0 2px 10px rgba(0, 0, 0, 0.35)";
+                    host.style.boxShadow = "none";
                 }
 
-                micIframe.style.width = "36px";
-                micIframe.style.height = "36px";
-                micIframe.style.minHeight = "36px";
+                micIframe.style.width = "34px";
+                micIframe.style.height = "34px";
+                micIframe.style.minHeight = "34px";
                 micIframe.style.border = "none";
                 micIframe.style.margin = "0";
                 micIframe.style.padding = "0";
