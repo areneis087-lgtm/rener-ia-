@@ -66,12 +66,29 @@ def eh_pedido_escudo_ou_emblema(texto: str) -> bool:
     return any(p in t for p in ("escudo", "emblema", "brasão", "brasao", "símbolo", "simbolo", "logo"))
 
 
+def eh_pedido_imagem_real(texto: str) -> bool:
+    t = (texto or "").lower()
+    return any(
+        p in t
+        for p in (
+            "imagem real",
+            "foto real",
+            "fotografia real",
+            "de verdade",
+            "foto de verdade",
+            "imagem de verdade",
+            "real mesmo",
+        )
+    )
+
+
 def buscar_imagem_real_na_web(consulta: str, max_tentativas: int = 8) -> bytes | None:
     termo = consulta.strip()
     if not termo:
         return None
 
     queries = [
+        f"{termo} foto real",
         f"{termo} png transparente",
         f"{termo} oficial",
         termo,
@@ -151,8 +168,14 @@ def formatar_historico_curto(mensagens: list[dict], limite: int = 8) -> str:
     for m in mensagens[-limite:]:
         papel = "Usuário" if m.get("role") == "user" else "Rener"
         conteudo = str(m.get("content") or "").strip()
-        if conteudo:
-            trechos.append(f"{papel}: {conteudo}")
+        anexos = []
+        if m.get("image"):
+            anexos.append("[imagem exibida no chat]")
+        if m.get("video"):
+            anexos.append("[vídeo exibido no chat]")
+        texto_final = f"{conteudo} {' '.join(anexos)}".strip()
+        if texto_final:
+            trechos.append(f"{papel}: {texto_final}")
     return "\n".join(trechos)
 
 
@@ -170,12 +193,13 @@ def decidir_acao_com_ia(client: Groq, mensagem_atual: str, historico: list[dict]
                     "content": (
                         "Você é o roteador inteligente de intenções do assistente Rener. "
                         "Analise a mensagem atual e o contexto recente da conversa e escolha UMA ação:\n"
-                        "- 'image': o usuário quer ver, criar ou gerar uma imagem, foto, escudo, brasão, emblema ou logo "
-                        "(incluindo pedidos que continuam um pedido visual anterior, como 'em 4k', 'de frente', 'mais realista').\n"
+                        "- 'image': o usuário quer ver, criar ou gerar uma imagem, foto real, escudo, brasão, emblema ou logo "
+                        "(incluindo pedidos que continuam um pedido visual anterior, como 'em 4k', 'de frente', 'imagem real').\n"
                         "- 'video': o usuário quer ver, criar ou gerar um vídeo, animação ou clipe curto.\n"
                         "- 'web': a resposta exige fato recente, notícia, placar, resultado, cotação, clima, "
                         "estreia ou informação atual da internet.\n"
-                        "- 'chat': conversa geral, explicação, dúvida, opinião, programação, estudo ou papo do dia a dia.\n"
+                        "- 'chat': conversa geral, explicação, dúvida, opinião, programação, estudo ou papo do dia a dia "
+                        "(incluindo perguntas sobre uma imagem ou resposta já exibida no chat).\n"
                         "Preencha 'consulta_web' com uma busca clara quando for 'web', e 'prompt_midia' com o pedido "
                         "visual completo (combinando o contexto se houver referência implícita) quando for 'image' ou 'video'.\n"
                         "Responda APENAS com JSON válido no formato:\n"
@@ -277,7 +301,7 @@ def gerar_imagem_alta_qualidade(
     pollinations_key: str = "",
     pedido_original: str = "",
 ) -> bytes | None:
-    if eh_pedido_escudo_ou_emblema(pedido_original):
+    if eh_pedido_escudo_ou_emblema(pedido_original) or eh_pedido_imagem_real(pedido_original):
         imagem_real = buscar_imagem_real_na_web(pedido_original)
         if imagem_real:
             return imagem_real
@@ -734,10 +758,13 @@ system_prompt = {
         "Seu criador também se chama Rener, e ele montou este aplicativo junto com o Gemini. "
         "Quando perguntarem quem te criou ou sobre a origem do seu nome, responda exatamente: "
         "'Fui criado pelo Rener em parceria com o Gemini — por isso que meu nome é Rener, homenagem ao meu criador.' "
-        "Você tem funções integradas no aplicativo para gerar imagens, gerar vídeos curtos em MP4 e pesquisar na "
-        "internet. Se uma geração de imagem, vídeo ou busca na web falhar em algum momento, nunca diga que você "
-        "não possui a função: explique com clareza que o serviço externo de geração ou busca falhou, bloqueou ou "
-        "demorou a responder temporariamente, e sugira tentar novamente em instantes. "
+        "Você tem funções integradas no aplicativo para gerar imagens, buscar imagens reais, gerar vídeos "
+        "curtos em MP4 e pesquisar na internet. Quando uma mensagem anterior do histórico contiver "
+        "[imagem exibida no chat] ou [vídeo exibido no chat] e o usuário perguntar sobre essa mídia, "
+        "responda diretamente sobre a mídia já exibida (por exemplo, informando se ela foi gerada por IA ou "
+        "buscada na web) e NUNCA diga que o serviço falhou quando a mídia já foi entregue na conversa. "
+        "Se uma nova geração de imagem, vídeo ou busca na web realmente falhar no momento atual, explique que "
+        "o serviço externo falhou, bloqueou ou demorou a responder temporariamente. "
         "Você entende perfeitamente qualquer assunto e qualquer pedido do usuário, conectando sempre o que está "
         "sendo dito agora ao histórico da conversa. "
         "Converse com naturalidade, autonomia e espontaneidade, como uma pessoa real que está batendo papo com o Rener. "
@@ -762,7 +789,7 @@ if st.session_state.menu_aba == "Biblioteca":
 
 elif st.session_state.menu_aba == "Imagens":
     st.subheader("🖼️ Imagens")
-    prompt_img = st.text_input("O que você quer criar?", placeholder="Ex: Escudo do Flamengo, zebra, carro...")
+    prompt_img = st.text_input("O que você quer criar?", placeholder="Ex: Coelho real, escudo do Flamengo, carro...")
     if st.button("✨ Criar imagem", use_container_width=True):
         if prompt_img.strip():
             with st.spinner("Criando imagem..."):
@@ -929,9 +956,16 @@ else:
                 with st.spinner("Pensando..."):
                     try:
                         mensagens_enviadas = [system_prompt] + [
-                            {"role": m["role"], "content": m["content"]}
+                            {
+                                "role": m["role"],
+                                "content": (
+                                    f"{m.get('content', '')} "
+                                    f"{'[imagem exibida no chat]' if m.get('image') else ''} "
+                                    f"{'[vídeo exibido no chat]' if m.get('video') else ''}"
+                                ).strip(),
+                            }
                             for m in historico_anterior
-                            if m.get("content")
+                            if m.get("content") or m.get("image") or m.get("video")
                         ]
 
                         if acao == "web":
