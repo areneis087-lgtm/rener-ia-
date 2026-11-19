@@ -1,5 +1,5 @@
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote_plus
 import xml.etree.ElementTree as ET
@@ -42,6 +42,24 @@ def eh_consulta_esportiva_ou_tempo_real(consulta: str) -> bool:
     return any(p in consulta.lower() for p in gatilhos)
 
 
+def montar_query_com_datas(consulta: str) -> str:
+    agora = datetime.now()
+    ontem = agora - timedelta(days=1)
+    hoje_str = agora.strftime("%d/%m/%Y")
+    ontem_str = ontem.strftime("%d/%m/%Y")
+
+    texto = consulta.strip()
+    texto_ajustado = texto
+    if "ontem" in texto.lower():
+        texto_ajustado = f"{texto_ajustado} {ontem_str}"
+    if "hoje" in texto.lower():
+        texto_ajustado = f"{texto_ajustado} {hoje_str}"
+
+    if eh_consulta_esportiva_ou_tempo_real(texto):
+        return f"{texto_ajustado} placar resultado gols"
+    return texto_ajustado
+
+
 def buscar_com_tavily(consulta: str) -> str:
     tavily_key = str(st.secrets.get("TAVILY_API_KEY", "")).strip()
     if not tavily_key:
@@ -51,16 +69,20 @@ def buscar_com_tavily(consulta: str) -> str:
         tempo_real = eh_consulta_esportiva_ou_tempo_real(consulta)
         categoria = "news" if tempo_real else "general"
         profundidade = "advanced" if tempo_real else "basic"
-        query_busca = f"{consulta} placar resultado gols" if tempo_real else consulta
+        query_busca = montar_query_com_datas(consulta)
 
-        resposta = tavily.search(
-            query=query_busca,
-            topic=categoria,
-            search_depth=profundidade,
-            max_results=5,
-            include_answer=True,
-            include_raw_content=tempo_real,
-        )
+        kwargs_busca = {
+            "query": query_busca,
+            "topic": categoria,
+            "search_depth": profundidade,
+            "max_results": 5,
+            "include_answer": True,
+            "include_raw_content": tempo_real,
+        }
+        if categoria == "news":
+            kwargs_busca["days"] = 3
+
+        resposta = tavily.search(**kwargs_busca)
 
         blocos = []
         resumo_direto = (resposta.get("answer") or "").strip()
@@ -71,7 +93,7 @@ def buscar_com_tavily(consulta: str) -> str:
             titulo = (item.get("title") or "").strip()
             conteudo = (item.get("content") or "").strip()
             raw = (item.get("raw_content") or "").strip()
-            texto_extra = raw[:1200] if raw else conteudo
+            texto_extra = raw[:1400] if raw else conteudo
             url = (item.get("url") or "").strip()
             data_pub = (item.get("published_date") or "").strip()
             cabecalho = f"[{idx}] {titulo}"
@@ -129,8 +151,8 @@ def pesquisar_na_internet(consulta: str) -> str:
         return resultado_tavily
 
     coletados = []
-    coletados.extend(buscar_google_noticias_rss(consulta, max_itens=5))
-    coletados.extend(buscar_ddgs(consulta, max_resultados=4))
+    coletados.extend(buscar_google_noticias_rss(montar_query_com_datas(consulta), max_itens=5))
+    coletados.extend(buscar_ddgs(montar_query_com_datas(consulta), max_resultados=4))
     return "\n\n".join(coletados[:8]) if coletados else ""
 
 
@@ -366,18 +388,20 @@ except Exception:
 
 client = Groq(api_key=api_key)
 
-data_atual = datetime.now().strftime("%d/%m/%Y")
+agora_dt = datetime.now()
+data_atual = agora_dt.strftime("%d/%m/%Y")
+ontem_data = (agora_dt - timedelta(days=1)).strftime("%d/%m/%Y")
 
 system_prompt = {
     "role": "system",
     "content": (
-        f"Você se chama Rener. Data atual do sistema: {data_atual}. "
+        f"Você se chama Rener. Data de hoje: {data_atual}; data de ontem: {ontem_data}. "
         "Seu criador também se chama Rener, e ele montou este aplicativo junto com o Gemini. "
         "Quando perguntarem quem te criou ou sobre a origem do seu nome, responda exatamente: "
         "'Fui criado pelo Rener em parceria com o Gemini — por isso que meu nome é Rener, homenagem ao meu criador.' "
         "Nunca chame ferramentas internas como browser.search; responda sempre em texto direto usando os resultados de pesquisa fornecidos pelo sistema. "
         "Procure com atenção nos resultados de pesquisa por placares numéricos (ex: 2 x 1, 1-0, 3 a 0), marcadores de gol, competição e data do jogo, e informe-os logo na primeira frase. "
-        "Nunca invente um placar se ele não aparecer nos textos fornecidos. "
+        "Nunca invente um placar se ele não aparecer nos textos fornecidos, nem misture jogos de meses antigos sem avisar claramente a data. "
         f"Estilo de resposta atual: {st.session_state.estilo_rener}."
     ),
 }
