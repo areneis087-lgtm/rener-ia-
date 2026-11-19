@@ -14,6 +14,7 @@ import numpy as np
 from PIL import Image
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 from streamlit_mic_recorder import mic_recorder
 from tavily import TavilyClient
 
@@ -644,6 +645,85 @@ def processar_turno_usuario(
                     st.error(f"Erro: {e}")
 
 
+def ancorar_microfone_ao_lado_do_envio() -> None:
+    components.html(
+        """
+        <script>
+        (function() {
+            const doc = window.parent.document;
+            if (!doc) return;
+
+            function posicionarMic() {
+                const iframes = Array.from(doc.querySelectorAll("iframe"));
+                const micIframe = iframes.find((f) => {
+                    const src = (f.getAttribute("src") || "").toLowerCase();
+                    const title = (f.getAttribute("title") || "").toLowerCase();
+                    return src.includes("mic_recorder") || title.includes("mic_recorder");
+                });
+                if (!micIframe) return;
+
+                const host = micIframe.closest('[data-testid="stElementContainer"], .stElementContainer, .element-container') || micIframe.parentElement;
+                const bottomBar = doc.querySelector('[data-testid="stBottom"]');
+                const sendBtn = bottomBar ? bottomBar.querySelector('[data-testid="stChatInputSubmitButton"], [data-testid="stChatInput"] button') : null;
+
+                let rightPx = 68;
+                let bottomPx = 18;
+
+                if (sendBtn) {
+                    const rect = sendBtn.getBoundingClientRect();
+                    if (rect.width > 0 && rect.height > 0) {
+                        const vw = window.parent.innerWidth || doc.documentElement.clientWidth;
+                        const vh = window.parent.innerHeight || doc.documentElement.clientHeight;
+                        rightPx = Math.max(54, Math.round(vw - rect.left + 8));
+                        bottomPx = Math.max(10, Math.round(vh - rect.bottom + (rect.height - 38) / 2));
+                    }
+                }
+
+                if (host) {
+                    host.style.position = "fixed";
+                    host.style.right = rightPx + "px";
+                    host.style.bottom = bottomPx + "px";
+                    host.style.left = "auto";
+                    host.style.top = "auto";
+                    host.style.width = "38px";
+                    host.style.height = "38px";
+                    host.style.minWidth = "38px";
+                    host.style.maxWidth = "38px";
+                    host.style.zIndex = "1002";
+                    host.style.margin = "0";
+                    host.style.padding = "0";
+                    host.style.background = "rgba(148, 163, 184, 0.24)";
+                    host.style.border = "1.5px solid #ffffff";
+                    host.style.borderRadius = "999px";
+                    host.style.overflow = "hidden";
+                    host.style.display = "flex";
+                    host.style.alignItems = "center";
+                    host.style.justifyContent = "center";
+                    host.style.boxShadow = "0 2px 10px rgba(0, 0, 0, 0.35)";
+                }
+
+                micIframe.style.width = "36px";
+                micIframe.style.height = "36px";
+                micIframe.style.minHeight = "36px";
+                micIframe.style.border = "none";
+                micIframe.style.margin = "0";
+                micIframe.style.padding = "0";
+                micIframe.style.background = "transparent";
+            }
+
+            posicionarMic();
+            const observer = new MutationObserver(posicionarMic);
+            observer.observe(doc.body, { childList: true, subtree: true, attributes: true });
+            window.parent.addEventListener("resize", posicionarMic);
+            setInterval(posicionarMic, 400);
+        })();
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
+
+
 bg_data_uri = encontrar_e_carregar_fundo()
 
 if bg_data_uri:
@@ -757,32 +837,6 @@ st.markdown(
             backdrop-filter: blur(6px);
         }}
 
-        .rener-mic-dock {{
-            position: fixed;
-            right: 68px;
-            bottom: 18px;
-            z-index: 1001;
-            background: rgba(148, 163, 184, 0.22);
-            border: 1.5px solid #ffffff;
-            border-radius: 999px;
-            padding: 0;
-            width: 38px;
-            height: 38px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
-        }}
-
-        .rener-mic-dock iframe {{
-            height: 36px !important;
-            min-height: 36px !important;
-            width: 36px !important;
-            margin: 0 !important;
-            padding: 0 !important;
-        }}
-
         [data-testid="stBottom"],
         [data-testid="stBottom"] > div,
         [data-testid="stBottom"] > div > div {{
@@ -818,6 +872,7 @@ st.markdown(
             font-size: 15px !important;
             border: none !important;
             box-shadow: none !important;
+            padding-right: 42px !important;
         }}
 
         [data-testid="stChatInput"] textarea::placeholder {{
@@ -1062,7 +1117,6 @@ else:
             if message.get("video"):
                 st.video(message["video"])
 
-    st.markdown('<div class="rener-mic-dock">', unsafe_allow_html=True)
     gravacao = mic_recorder(
         start_prompt="🎤",
         stop_prompt="⏹",
@@ -1070,7 +1124,7 @@ else:
         use_container_width=False,
         key="microfone_ditado_rener",
     )
-    st.markdown("</div>", unsafe_allow_html=True)
+    ancorar_microfone_ao_lado_do_envio()
 
     if gravacao and isinstance(gravacao, dict) and gravacao.get("bytes"):
         audio_bytes = gravacao["bytes"]
