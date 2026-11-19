@@ -293,25 +293,35 @@ def gerar_imagem_alta_qualidade(
         )
 
     param_chave = f"&key={quote(pollinations_key)}" if pollinations_key else ""
-    url = (
-        f"https://image.pollinations.ai/prompt/{quote(prompt_limpo)}"
-        f"?width={largura}&height={altura}&model=flux&nologo=true&enhance=true{param_chave}"
-    )
     headers = {"User-Agent": "Mozilla/5.0"}
     if pollinations_key:
         headers["Authorization"] = f"Bearer {pollinations_key}"
 
-    try:
-        resp = requests.get(url, timeout=40, headers=headers)
-        if resp.status_code == 200 and resp.content:
-            img = Image.open(BytesIO(resp.content)).convert("RGB")
-            if img.size[0] >= 120 and img.size[1] >= 120:
-                img = cortar_selo_canto(img)
-                buf = BytesIO()
-                img.save(buf, format="PNG")
-                return buf.getvalue()
-    except Exception:
-        pass
+    tentativas_url = [
+        (
+            f"https://image.pollinations.ai/prompt/{quote(prompt_limpo)}"
+            f"?width={largura}&height={altura}&model=flux&nologo=true&enhance=true{param_chave}",
+            30,
+        ),
+        (
+            f"https://image.pollinations.ai/prompt/{quote(prompt_limpo)}"
+            f"?width=1024&height=1024&nologo=true{param_chave}",
+            25,
+        ),
+    ]
+
+    for url, timeout_seg in tentativas_url:
+        try:
+            resp = requests.get(url, timeout=timeout_seg, headers=headers)
+            if resp.status_code == 200 and resp.content:
+                img = Image.open(BytesIO(resp.content)).convert("RGB")
+                if img.size[0] >= 120 and img.size[1] >= 120:
+                    img = cortar_selo_canto(img)
+                    buf = BytesIO()
+                    img.save(buf, format="PNG")
+                    return buf.getvalue()
+        except Exception:
+            continue
 
     return None
 
@@ -724,6 +734,10 @@ system_prompt = {
         "Seu criador também se chama Rener, e ele montou este aplicativo junto com o Gemini. "
         "Quando perguntarem quem te criou ou sobre a origem do seu nome, responda exatamente: "
         "'Fui criado pelo Rener em parceria com o Gemini — por isso que meu nome é Rener, homenagem ao meu criador.' "
+        "Você tem funções integradas no aplicativo para gerar imagens, gerar vídeos curtos em MP4 e pesquisar na "
+        "internet. Se uma geração de imagem, vídeo ou busca na web falhar em algum momento, nunca diga que você "
+        "não possui a função: explique com clareza que o serviço externo de geração ou busca falhou, bloqueou ou "
+        "demorou a responder temporariamente, e sugira tentar novamente em instantes. "
         "Você entende perfeitamente qualquer assunto e qualquer pedido do usuário, conectando sempre o que está "
         "sendo dito agora ao histórico da conversa. "
         "Converse com naturalidade, autonomia e espontaneidade, como uma pessoa real que está batendo papo com o Rener. "
@@ -748,7 +762,7 @@ if st.session_state.menu_aba == "Biblioteca":
 
 elif st.session_state.menu_aba == "Imagens":
     st.subheader("🖼️ Imagens")
-    prompt_img = st.text_input("O que você quer criar?", placeholder="Ex: Escudo do Flamengo, gato real, carro...")
+    prompt_img = st.text_input("O que você quer criar?", placeholder="Ex: Escudo do Flamengo, zebra, carro...")
     if st.button("✨ Criar imagem", use_container_width=True):
         if prompt_img.strip():
             with st.spinner("Criando imagem..."):
