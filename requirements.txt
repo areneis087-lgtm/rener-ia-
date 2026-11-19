@@ -3,3 +3,5 @@ groq
 tavily-python
 ddgs
 requests
+pillow
+imageio[ffmpeg]
