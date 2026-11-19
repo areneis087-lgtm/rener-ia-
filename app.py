@@ -32,16 +32,29 @@ def encontrar_e_carregar_fundo() -> str:
     return ""
 
 
-def pesquisar_na_internet(consulta: str, max_resultados: int = 5) -> str:
+def montar_consulta_web(pergunta: str) -> str:
+    texto = pergunta.strip()
+    gatilhos_jogo = ("jogo", "placar", "resultado", "gol", "gols", "ontem", "hoje", "ao vivo", "partida")
+    if any(palavra in texto.lower() for palavra in gatilhos_jogo):
+        return f"{texto} placar resultado noticias"
+    return texto
+
+
+def pesquisar_na_internet(consulta: str, max_resultados: int = 6) -> str:
+    consulta_otimizada = montar_consulta_web(consulta)
     try:
         resultados_texto = []
         with DDGS() as ddgs:
-            resultados = list(ddgs.text(consulta, region="br-pt", max_results=max_resultados))
+            resultados = list(ddgs.text(consulta_otimizada, region="br-pt", max_results=max_resultados))
+            if not resultados and consulta_otimizada != consulta:
+                resultados = list(ddgs.text(consulta, region="br-pt", max_results=max_resultados))
+
             for idx, r in enumerate(resultados, start=1):
                 titulo = r.get("title", "").strip()
                 trecho = r.get("body", "").strip()
                 link = r.get("href", "").strip()
-                resultados_texto.append(f"[{idx}] {titulo}\nResumo: {trecho}\nFonte: {link}")
+                if titulo or trecho:
+                    resultados_texto.append(f"[{idx}] {titulo}\nResumo: {trecho}\nFonte: {link}")
         return "\n\n".join(resultados_texto) if resultados_texto else ""
     except Exception:
         return ""
@@ -287,6 +300,7 @@ system_prompt = {
         "Quando perguntarem quem te criou ou sobre a origem do seu nome, responda exatamente: "
         "'Fui criado pelo Rener em parceria com o Gemini — por isso que meu nome é Rener, homenagem ao meu criador.' "
         "Nunca chame ferramentas internas como browser.search; responda sempre em texto direto usando os resultados de pesquisa fornecidos pelo sistema. "
+        "Quando houver resultados da web, extraia as informações relevantes (como placares, datas, times e notícias) de forma direta e clara. "
         "Se os resultados não trouxerem um placar em tempo real ou exato, diga isso de forma transparente. "
         f"Estilo de resposta atual: {st.session_state.estilo_rener}."
     ),
@@ -384,7 +398,11 @@ else:
                             "Responda de forma direta e útil com base nesses resultados."
                         )
                     else:
-                        mensagem_com_busca = prompt
+                        mensagem_com_busca = (
+                            f"Pergunta do usuário: {prompt}\n\n"
+                            "Nota: A busca na internet não retornou resultados úteis agora. "
+                            "Responda com o que souber ou avise com clareza se precisar de dados em tempo real."
+                        )
 
                     mensagens_enviadas.append({"role": "user", "content": mensagem_com_busca})
 
