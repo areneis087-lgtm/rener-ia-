@@ -1,5 +1,6 @@
 import base64
 from pathlib import Path
+from ddgs import DDGS
 from groq import Groq
 import streamlit as st
 
@@ -29,6 +30,21 @@ def encontrar_e_carregar_fundo() -> str:
             return f"data:{mime};base64,{b64}"
 
     return ""
+
+
+def pesquisar_na_internet(consulta: str, max_resultados: int = 5) -> str:
+    try:
+        resultados_texto = []
+        with DDGS() as ddgs:
+            resultados = list(ddgs.text(consulta, region="br-pt", max_results=max_resultados))
+            for idx, r in enumerate(resultados, start=1):
+                titulo = r.get("title", "").strip()
+                trecho = r.get("body", "").strip()
+                link = r.get("href", "").strip()
+                resultados_texto.append(f"[{idx}] {titulo}\nResumo: {trecho}\nFonte: {link}")
+        return "\n\n".join(resultados_texto) if resultados_texto else ""
+    except Exception:
+        return ""
 
 
 bg_data_uri = encontrar_e_carregar_fundo()
@@ -113,7 +129,7 @@ st.markdown(
             width: 100% !important;
         }}
 
-        /* Mensagem do usuário à direita em cinza fraco arredondado (sem barra azul) */
+        /* Mensagem do usuário à direita em cinza fraco arredondado */
         [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]),
         [data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) {{
             justify-content: flex-end !important;
@@ -270,6 +286,8 @@ system_prompt = {
         "Seu criador também se chama Rener, e ele montou este aplicativo junto com o Gemini. "
         "Quando perguntarem quem te criou ou sobre a origem do seu nome, responda exatamente: "
         "'Fui criado pelo Rener em parceria com o Gemini — por isso que meu nome é Rener, homenagem ao meu criador.' "
+        "Quando forem fornecidos resultados de pesquisa na internet, use esses dados para responder com precisão, clareza e rapidez, "
+        "indicando o que está atualizado ou ao vivo conforme os resultados. Se os resultados não trouxerem um placar em tempo real, avise isso com transparência. "
         f"Estilo de resposta atual: {st.session_state.estilo_rener}."
     ),
 }
@@ -352,11 +370,24 @@ else:
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner("Pensando..."):
+            with st.spinner("Pesquisando e respondendo..."):
                 try:
+                    resultados_web = pesquisar_na_internet(prompt)
                     mensagens_enviadas = [system_prompt] + [
-                        {"role": m["role"], "content": m["content"]} for m in st.session_state.messages
+                        {"role": m["role"], "content": m["content"]} for m in st.session_state.messages[:-1]
                     ]
+
+                    if resultados_web:
+                        mensagem_com_busca = (
+                            f"Pergunta do usuário: {prompt}\n\n"
+                            f"Resultados rápidos encontrados na internet:\n{resultados_web}\n\n"
+                            "Responda de forma direta e útil com base nesses resultados."
+                        )
+                    else:
+                        mensagem_com_busca = prompt
+
+                    mensagens_enviadas.append({"role": "user", "content": mensagem_com_busca})
+
                     chat_completion = client.chat.completions.create(
                         model="openai/gpt-oss-20b",
                         messages=mensagens_enviadas,
