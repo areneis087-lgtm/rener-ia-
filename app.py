@@ -53,6 +53,16 @@ else:
 st.markdown(
     f"""
     <style>
+        html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {{
+            scroll-behavior: smooth !important;
+            -webkit-overflow-scrolling: touch !important;
+            overflow-anchor: auto !important;
+        }}
+
+        [data-testid="stMainBlockContainer"] {{
+            padding-bottom: 120px !important;
+        }}
+
         {fundo_css}
 
         [data-testid="stSidebar"] {{
@@ -103,7 +113,7 @@ st.markdown(
             width: 100% !important;
         }}
 
-        /* Mensagem do usuário à direita em formato arredondado */
+        /* Mensagem do usuário à direita em cinza fraco arredondado (sem barra azul) */
         [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]),
         [data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) {{
             justify-content: flex-end !important;
@@ -111,13 +121,14 @@ st.markdown(
 
         [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"],
         [data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) [data-testid="stChatMessageContent"] {{
-            background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%) !important;
-            color: #ffffff !important;
-            border: 1px solid rgba(255, 255, 255, 0.25) !important;
+            background: rgba(148, 163, 184, 0.22) !important;
+            color: #f8fafc !important;
+            border: 1px solid rgba(255, 255, 255, 0.16) !important;
             border-radius: 24px 24px 6px 24px !important;
             padding: 10px 16px !important;
             max-width: 82% !important;
-            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35) !important;
+            backdrop-filter: blur(6px);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28) !important;
         }}
 
         /* Resposta da IA à esquerda */
@@ -130,7 +141,7 @@ st.markdown(
         [data-testid="stChatMessage"]:has([aria-label="Chat message from assistant"]) [data-testid="stChatMessageContent"] {{
             background: rgba(9, 13, 24, 0.82) !important;
             color: #f8fafc !important;
-            border: 1px solid rgba(255, 255, 255, 0.16) !important;
+            border: 1px solid rgba(255, 255, 255, 0.14) !important;
             border-radius: 8px 22px 22px 22px !important;
             padding: 10px 16px !important;
             max-width: 88% !important;
@@ -182,7 +193,7 @@ st.markdown(
         }}
 
         [data-testid="stChatInput"] button {{
-            background-color: #2563eb !important;
+            background-color: rgba(148, 163, 184, 0.28) !important;
             color: #ffffff !important;
             border-radius: 999px !important;
             border: 1.5px solid #ffffff !important;
@@ -191,7 +202,7 @@ st.markdown(
         }}
 
         [data-testid="stChatInput"] button:hover {{
-            background-color: #3b82f6 !important;
+            background-color: rgba(148, 163, 184, 0.45) !important;
         }}
     </style>
     """,
