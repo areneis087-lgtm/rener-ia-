@@ -37,6 +37,65 @@ def encontrar_e_carregar_fundo() -> str:
     return ""
 
 
+def precisa_pesquisar_na_web(consulta: str) -> bool:
+    texto = consulta.strip().lower()
+    if len(texto) <= 18 and texto in {
+        "oi",
+        "olá",
+        "ola",
+        "bom dia",
+        "boa tarde",
+        "boa noite",
+        "tudo bem",
+        "muito bem",
+        "valeu",
+        "obrigado",
+        "obrigada",
+        "top",
+        "show",
+        "beleza",
+        "ok",
+    }:
+        return False
+
+    gatilhos_web = (
+        "jogo",
+        "placar",
+        "resultado",
+        "gol",
+        "gols",
+        "ao vivo",
+        "partida",
+        "notícia",
+        "noticia",
+        "notícias",
+        "noticias",
+        "hoje",
+        "ontem",
+        "amanhã",
+        "amanha",
+        "agora",
+        "últimas",
+        "ultimas",
+        "preço",
+        "preco",
+        "cotação",
+        "cotacao",
+        "clima",
+        "tempo",
+        "quem ganhou",
+        "quem venceu",
+        "campeonato",
+        "tabela",
+        "pesquise",
+        "pesquisa",
+        "procure",
+        "na internet",
+        "no google",
+    )
+    return any(p in texto for p in gatilhos_web)
+
+
 def eh_consulta_esportiva_ou_tempo_real(consulta: str) -> bool:
     gatilhos = ("jogo", "placar", "resultado", "gol", "gols", "ontem", "hoje", "ao vivo", "partida", "notícia", "noticia")
     return any(p in consulta.lower() for p in gatilhos)
@@ -399,9 +458,10 @@ system_prompt = {
         "Seu criador também se chama Rener, e ele montou este aplicativo junto com o Gemini. "
         "Quando perguntarem quem te criou ou sobre a origem do seu nome, responda exatamente: "
         "'Fui criado pelo Rener em parceria com o Gemini — por isso que meu nome é Rener, homenagem ao meu criador.' "
-        "Nunca chame ferramentas internas como browser.search; responda sempre em texto direto usando os resultados de pesquisa fornecidos pelo sistema. "
-        "Procure com atenção nos resultados de pesquisa por placares numéricos (ex: 2 x 1, 1-0, 3 a 0), marcadores de gol, competição e data do jogo, e informe-os logo na primeira frase. "
-        "Nunca invente um placar se ele não aparecer nos textos fornecidos, nem misture jogos de meses antigos sem avisar claramente a data. "
+        "Converse com naturalidade, autonomia e espontaneidade, como uma pessoa real que está batendo papo com o Rener. "
+        "Quando o usuário te elogiar ou pedir para agradecer elogios, agradeça de forma simpática e direta na própria conversa, sem ficar explicando regras ou falando como robô. "
+        "Quando o usuário comentar um placar ou algo que aconteceu, acompanhe o papo naturalmente; só quando ele pedir para você buscar ou confirmar um resultado/notícia na internet, use os dados da pesquisa sem inventar placar que não exista nas fontes. "
+        "Nunca chame ferramentas internas como browser.search; responda sempre em texto direto. "
         f"Estilo de resposta atual: {st.session_state.estilo_rener}."
     ),
 }
@@ -484,23 +544,26 @@ else:
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner("Pesquisando e respondendo..."):
+            with st.spinner("Pensando..."):
                 try:
-                    resultados_web = pesquisar_na_internet(prompt)
                     mensagens_enviadas = [system_prompt] + [
                         {"role": m["role"], "content": m["content"]} for m in st.session_state.messages[:-1]
                     ]
 
-                    if resultados_web:
-                        mensagem_com_busca = (
-                            f"Pergunta do usuário: {prompt}\n\n"
-                            f"Resultados reais encontrados na internet:\n{resultados_web}\n\n"
-                            "Responda de forma direta, objetiva e natural com base nesses resultados, destacando o placar exato se ele constar nos textos."
-                        )
+                    if precisa_pesquisar_na_web(prompt):
+                        resultados_web = pesquisar_na_internet(prompt)
+                        if resultados_web:
+                            mensagem_envio = (
+                                f"Mensagem do usuário: {prompt}\n\n"
+                                f"Dados da busca na internet:\n{resultados_web}\n\n"
+                                "Responda de forma natural e humana, usando os dados quando ajudarem."
+                            )
+                        else:
+                            mensagem_envio = prompt
                     else:
-                        mensagem_com_busca = prompt
+                        mensagem_envio = prompt
 
-                    mensagens_enviadas.append({"role": "user", "content": mensagem_com_busca})
+                    mensagens_enviadas.append({"role": "user", "content": mensagem_envio})
 
                     chat_completion = client.chat.completions.create(
                         model="openai/gpt-oss-20b",
