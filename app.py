@@ -34,45 +34,61 @@ st.markdown(
             margin-top: 6px;
         }
 
-        /* Modernização da barra inferior e caixa de digitação */
+        /* Remove a barra/faixa quadrada padrão do rodapé do Streamlit */
         [data-testid="stBottom"],
         [data-testid="stBottom"] > div,
-        [data-testid="stChatInput"] {
+        [data-testid="stBottom"] > div > div,
+        [data-testid="stChatInput"],
+        [data-testid="stChatInput"] > div,
+        [data-testid="stChatInput"] > div > div {
             background: transparent !important;
+            background-color: transparent !important;
             border: none !important;
+            box-shadow: none !important;
         }
-        [data-testid="stChatInput"] > div {
-            background-color: #15171c !important;
-            border: 1px solid rgba(255, 255, 255, 0.14) !important;
-            border-radius: 28px !important;
-            padding: 4px 8px 4px 14px !important;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55) !important;
+
+        /* Cápsula arredondada principal da caixa de digitação */
+        [data-testid="stChatInput"] [data-baseweb="textarea"],
+        [data-testid="stChatInput"] [data-baseweb="base-input"] {
+            background-color: #151821 !important;
+            border: 1px solid rgba(255, 255, 255, 0.16) !important;
+            border-radius: 999px !important;
+            padding: 4px 10px 4px 16px !important;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6) !important;
         }
+
         [data-testid="stChatInput"] textarea {
             background-color: transparent !important;
             color: #ffffff !important;
             font-size: 15px !important;
             border: none !important;
+            border-radius: 999px !important;
             box-shadow: none !important;
         }
+
         [data-testid="stChatInput"] textarea::placeholder {
             color: #9ca3af !important;
         }
+
+        /* Botão de enviar arredondado */
         [data-testid="stChatInput"] button {
             background-color: #2563eb !important;
             color: #ffffff !important;
             border-radius: 999px !important;
             border: none !important;
+            min-width: 38px !important;
+            height: 38px !important;
         }
+
         [data-testid="stChatInput"] button:hover {
             background-color: #3b82f6 !important;
         }
 
-        /* Bolhas de mensagem mais limpas */
+        /* Bolhas de mensagem arredondadas */
         [data-testid="stChatMessage"] {
-            background-color: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 18px;
+            background-color: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
             padding: 10px 14px;
             margin-bottom: 8px;
         }
