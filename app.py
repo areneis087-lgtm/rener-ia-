@@ -47,20 +47,20 @@ st.markdown(
             box-shadow: none !important;
         }
 
-        /* Cápsula visível e arredondada */
+        /* Contorno branco bem nítido em volta da barra de digitação */
         [data-testid="stChatInput"] [data-baseweb="textarea"],
         [data-testid="stChatInput"] [data-baseweb="base-input"] {
-            background-color: #1e2433 !important;
-            border: 1.5px solid rgba(148, 163, 184, 0.45) !important;
+            background-color: #121622 !important;
+            border: 2px solid #ffffff !important;
             border-radius: 999px !important;
             padding: 4px 10px 4px 16px !important;
-            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65) !important;
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25), 0 10px 28px rgba(0, 0, 0, 0.75) !important;
         }
 
         [data-testid="stChatInput"] textarea {
             background-color: transparent !important;
-            color: #f8fafc !important;
-            caret-color: #60a5fa !important;
+            color: #ffffff !important;
+            caret-color: #ffffff !important;
             font-size: 15px !important;
             border: none !important;
             border-radius: 999px !important;
@@ -68,7 +68,7 @@ st.markdown(
         }
 
         [data-testid="stChatInput"] textarea::placeholder {
-            color: #cbd5e1 !important;
+            color: #e2e8f0 !important;
             opacity: 1 !important;
         }
 
@@ -77,7 +77,7 @@ st.markdown(
             background-color: #2563eb !important;
             color: #ffffff !important;
             border-radius: 999px !important;
-            border: none !important;
+            border: 1.5px solid #ffffff !important;
             min-width: 38px !important;
             height: 38px !important;
         }
@@ -86,10 +86,10 @@ st.markdown(
             background-color: #3b82f6 !important;
         }
 
-        /* Bolhas de mensagem com contraste nítido */
+        /* Bolhas de mensagem com contorno suave */
         [data-testid="stChatMessage"] {
             background-color: rgba(30, 41, 59, 0.55);
-            border: 1px solid rgba(148, 163, 184, 0.22);
+            border: 1px solid rgba(255, 255, 255, 0.22);
             border-radius: 20px;
             padding: 10px 14px;
             margin-bottom: 8px;
