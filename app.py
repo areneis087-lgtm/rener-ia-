@@ -11,7 +11,7 @@ from ddgs import DDGS
 from groq import Groq
 import imageio.v2 as imageio
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image
 import requests
 import streamlit as st
 from tavily import TavilyClient
@@ -66,6 +66,65 @@ def eh_pedido_escudo_ou_emblema(texto: str) -> bool:
     return any(p in t for p in ("escudo", "emblema", "brasão", "brasao", "símbolo", "simbolo", "logo"))
 
 
+def buscar_imagem_real_na_web(consulta: str, max_tentativas: int = 8) -> bytes | None:
+    termo = consulta.strip()
+    if not termo:
+        return None
+
+    queries = [
+        f"{termo} png transparente",
+        f"{termo} oficial",
+        termo,
+    ]
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+        ),
+        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+    }
+
+    for q in queries:
+        try:
+            with DDGS() as ddgs:
+                resultados = list(ddgs.images(q, region="br-pt", safesearch="moderate", max_results=max_tentativas))
+        except Exception:
+            resultados = []
+
+        for item in resultados:
+            url_img = str(item.get("image") or item.get("thumbnail") or "").strip()
+            if not url_img.startswith(("http://", "https://")):
+                continue
+            try:
+                resp = requests.get(url_img, timeout=12, headers=headers, allow_redirects=True)
+                content_type = (resp.headers.get("Content-Type") or "").lower()
+                if resp.status_code != 200 or not resp.content:
+                    continue
+                if "html" in content_type or "text" in content_type:
+                    continue
+
+                img = Image.open(BytesIO(resp.content))
+                img.load()
+                largura, altura = img.size
+                if largura < 120 or altura < 120:
+                    continue
+
+                if img.mode in ("RGBA", "LA") or "transparency" in img.info:
+                    rgba = img.convert("RGBA")
+                    fundo_escuro = Image.new("RGBA", rgba.size, (12, 16, 28, 255))
+                    combinada = Image.alpha_composite(fundo_escuro, rgba).convert("RGB")
+                else:
+                    combinada = img.convert("RGB")
+
+                buf = BytesIO()
+                combinada.save(buf, format="PNG")
+                return buf.getvalue()
+            except Exception:
+                continue
+
+    return None
+
+
 def cortar_selo_canto(img: Image.Image) -> Image.Image:
     largura, altura = img.size
     if largura < 200 or altura < 200:
@@ -111,7 +170,7 @@ def decidir_acao_com_ia(client: Groq, mensagem_atual: str, historico: list[dict]
                     "content": (
                         "Você é o roteador inteligente de intenções do assistente Rener. "
                         "Analise a mensagem atual e o contexto recente da conversa e escolha UMA ação:\n"
-                        "- 'image': o usuário quer ver, criar ou gerar uma imagem, foto, escudo ou emblema "
+                        "- 'image': o usuário quer ver, criar ou gerar uma imagem, foto, escudo, brasão, emblema ou logo "
                         "(incluindo pedidos que continuam um pedido visual anterior, como 'em 4k', 'de frente', 'mais realista').\n"
                         "- 'video': o usuário quer ver, criar ou gerar um vídeo, animação ou clipe curto.\n"
                         "- 'web': a resposta exige fato recente, notícia, placar, resultado, cotação, clima, "
@@ -184,8 +243,7 @@ def planejar_cena_com_ia(
                         "Regras:\n"
                         "1. Foque exatamente no assunto pedido pelo usuário, sem trocar o tema.\n"
                         "2. Se o pedido envolver escudo, brasão, emblema ou logo, descreva um emblema gráfico "
-                        "limpo, simétrico, nítido e centralizado em fundo simples (nunca use 'candid photograph' "
-                        "ou '3d render' distorcido para escudos).\n"
+                        "limpo, simétrico, nítido e centralizado em fundo simples.\n"
                         "3. Para cenas, animais, pessoas, veículos ou lugares reais, priorize fotografia realista "
                         "com iluminação natural, foco nítido e texturas autênticas.\n"
                         "4. Nunca inclua palavras soltas aleatórias ou marcas d'água.\n"
@@ -219,6 +277,11 @@ def gerar_imagem_alta_qualidade(
     pollinations_key: str = "",
     pedido_original: str = "",
 ) -> bytes | None:
+    if eh_pedido_escudo_ou_emblema(pedido_original):
+        imagem_real = buscar_imagem_real_na_web(pedido_original)
+        if imagem_real:
+            return imagem_real
+
     largura, altura = detectar_dimensoes_pedido(pedido_original)
     prompt_visual = info_cena.get("prompt_visual", "realistic photograph, sharp focus, high detail")
     if eh_pedido_escudo_ou_emblema(pedido_original):
@@ -685,7 +748,7 @@ if st.session_state.menu_aba == "Biblioteca":
 
 elif st.session_state.menu_aba == "Imagens":
     st.subheader("🖼️ Imagens")
-    prompt_img = st.text_input("O que você quer criar?", placeholder="Ex: Gato real, leão na savana, carro...")
+    prompt_img = st.text_input("O que você quer criar?", placeholder="Ex: Escudo do Flamengo, gato real, carro...")
     if st.button("✨ Criar imagem", use_container_width=True):
         if prompt_img.strip():
             with st.spinner("Criando imagem..."):
