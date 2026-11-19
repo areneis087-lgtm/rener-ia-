@@ -7,7 +7,6 @@ import re
 import tempfile
 from urllib.parse import quote, quote_plus
 import xml.etree.ElementTree as ET
-from ddgs import DDGS
 from groq import Groq
 import imageio.v2 as imageio
 import numpy as np
@@ -16,12 +15,15 @@ import requests
 import streamlit as st
 from streamlit_mic_recorder import mic_recorder
 
-try:
-    from tavily import TavilyClient
-except ImportError:
-    TavilyClient = None
-
 st.set_page_config(page_title="Rener", page_icon="✨", layout="centered")
+
+MOBILE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+    ),
+    "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+}
 
 
 def carregar_chaves_secrets() -> dict[str, str]:
@@ -50,18 +52,24 @@ def encontrar_e_carregar_fundo() -> str:
         Path("1000426462_2.png"),
         Path("1000426462.png"),
     ]
-    for arq in Path(".").iterdir():
-        if arq.is_file() and arq.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
-            if arq.stem.lower().startswith("fundo") or "1000426462" in arq.stem.lower():
-                candidatos.insert(0, arq)
+    try:
+        for arq in Path(".").iterdir():
+            if arq.is_file() and arq.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
+                if arq.stem.lower().startswith("fundo") or "1000426462" in arq.stem.lower():
+                    candidatos.insert(0, arq)
+    except Exception:
+        pass
 
     for caminho in candidatos:
         if caminho.exists() and caminho.is_file():
-            dados = caminho.read_bytes()
-            b64 = base64.b64encode(dados).decode("utf-8")
-            ext = caminho.suffix.lower().lstrip(".")
-            mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
-            return f"data:{mime};base64,{b64}"
+            try:
+                dados = caminho.read_bytes()
+                b64 = base64.b64encode(dados).decode("utf-8")
+                ext = caminho.suffix.lower().lstrip(".")
+                mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+                return f"data:{mime};base64,{b64}"
+            except Exception:
+                continue
 
     return ""
 
@@ -87,7 +95,7 @@ def eh_pedido_imagem_real(texto: str) -> bool:
     )
 
 
-def buscar_imagem_real_na_web(consulta: str, max_tentativas: int = 8) -> bytes | None:
+def buscar_imagem_real_na_web(consulta: str) -> bytes | None:
     termo = consulta.strip()
     if not termo:
         return None
@@ -98,51 +106,49 @@ def buscar_imagem_real_na_web(consulta: str, max_tentativas: int = 8) -> bytes |
         f"{termo} oficial",
         termo,
     ]
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-        ),
-        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-    }
 
     for q in queries:
         try:
-            with DDGS() as ddgs:
-                resultados = list(ddgs.images(q, region="br-pt", safesearch="moderate", max_results=max_tentativas))
+            resp_ddg = requests.get(
+                f"https://duckduckgo.com/?q={quote_plus(q)}&iax=images&ia=images",
+                timeout=10,
+                headers=MOBILE_HEADERS,
+            )
+            urls_encontradas = []
+            if resp_ddg.status_code == 200 and resp_ddg.text:
+                for m in re.findall(r"https?://[^\s\"'<>]+\.(?:png|jpg|jpeg|webp)", resp_ddg.text, flags=re.I):
+                    if m not in urls_encontradas:
+                        urls_encontradas.append(m)
+
+            for url_img in urls_encontradas[:8]:
+                try:
+                    resp = requests.get(url_img, timeout=12, headers=MOBILE_HEADERS, allow_redirects=True)
+                    content_type = (resp.headers.get("Content-Type") or "").lower()
+                    if resp.status_code != 200 or not resp.content:
+                        continue
+                    if "html" in content_type or "text" in content_type:
+                        continue
+
+                    img = Image.open(BytesIO(resp.content))
+                    img.load()
+                    largura, altura = img.size
+                    if largura < 120 or altura < 120:
+                        continue
+
+                    if img.mode in ("RGBA", "LA") or "transparency" in img.info:
+                        rgba = img.convert("RGBA")
+                        fundo_escuro = Image.new("RGBA", rgba.size, (12, 16, 28, 255))
+                        combinada = Image.alpha_composite(fundo_escuro, rgba).convert("RGB")
+                    else:
+                        combinada = img.convert("RGB")
+
+                    buf = BytesIO()
+                    combinada.save(buf, format="PNG")
+                    return buf.getvalue()
+                except Exception:
+                    continue
         except Exception:
-            resultados = []
-
-        for item in resultados:
-            url_img = str(item.get("image") or item.get("thumbnail") or "").strip()
-            if not url_img.startswith(("http://", "https://")):
-                continue
-            try:
-                resp = requests.get(url_img, timeout=12, headers=headers, allow_redirects=True)
-                content_type = (resp.headers.get("Content-Type") or "").lower()
-                if resp.status_code != 200 or not resp.content:
-                    continue
-                if "html" in content_type or "text" in content_type:
-                    continue
-
-                img = Image.open(BytesIO(resp.content))
-                img.load()
-                largura, altura = img.size
-                if largura < 120 or altura < 120:
-                    continue
-
-                if img.mode in ("RGBA", "LA") or "transparency" in img.info:
-                    rgba = img.convert("RGBA")
-                    fundo_escuro = Image.new("RGBA", rgba.size, (12, 16, 28, 255))
-                    combinada = Image.alpha_composite(fundo_escuro, rgba).convert("RGB")
-                else:
-                    combinada = img.convert("RGB")
-
-                buf = BytesIO()
-                combinada.save(buf, format="PNG")
-                return buf.getvalue()
-            except Exception:
-                continue
+            continue
 
     return None
 
@@ -452,46 +458,34 @@ def montar_query_com_datas(consulta: str) -> str:
     return texto_ajustado
 
 
-def buscar_com_tavily(consulta: str, tavily_key: str) -> str:
-    if not tavily_key or TavilyClient is None:
+def buscar_com_tavily_http(consulta: str, tavily_key: str) -> str:
+    if not tavily_key:
         return ""
     try:
-        tavily = TavilyClient(api_key=tavily_key)
-        tempo_real = eh_consulta_esportiva_ou_tempo_real(consulta)
-        categoria = "news" if tempo_real else "general"
-        profundidade = "advanced" if tempo_real else "basic"
-        query_busca = montar_query_com_datas(consulta)
-
-        kwargs_busca = {
-            "query": query_busca,
-            "topic": categoria,
-            "search_depth": profundidade,
-            "max_results": 5,
-            "include_answer": True,
-            "include_raw_content": tempo_real,
-        }
-        if categoria == "news":
-            kwargs_busca["days"] = 3
-
-        resposta = tavily.search(**kwargs_busca)
-
+        resp = requests.post(
+            "https://api.tavily.com/search",
+            json={
+                "api_key": tavily_key,
+                "query": montar_query_com_datas(consulta),
+                "topic": "news" if eh_consulta_esportiva_ou_tempo_real(consulta) else "general",
+                "search_depth": "advanced" if eh_consulta_esportiva_ou_tempo_real(consulta) else "basic",
+                "max_results": 5,
+                "include_answer": True,
+            },
+            timeout=12,
+        )
+        if resp.status_code != 200:
+            return ""
+        resposta = resp.json()
         blocos = []
         resumo_direto = (resposta.get("answer") or "").strip()
         if resumo_direto:
             blocos.append(f"[Resumo direto da pesquisa]\n{resumo_direto}")
-
         for idx, item in enumerate(resposta.get("results", []), start=1):
             titulo = (item.get("title") or "").strip()
             conteudo = (item.get("content") or "").strip()
-            raw = (item.get("raw_content") or "").strip()
-            texto_extra = raw[:1400] if raw else conteudo
             url = (item.get("url") or "").strip()
-            data_pub = (item.get("published_date") or "").strip()
-            cabecalho = f"[{idx}] {titulo}"
-            if data_pub:
-                cabecalho += f" ({data_pub})"
-            blocos.append(f"{cabecalho}\nResumo: {conteudo}\nDetalhes: {texto_extra}\nFonte: {url}")
-
+            blocos.append(f"[{idx}] {titulo}\nResumo: {conteudo}\nFonte: {url}")
         return "\n\n".join(blocos)
     except Exception:
         return ""
@@ -520,31 +514,13 @@ def buscar_google_noticias_rss(consulta: str, max_itens: int = 6) -> list[str]:
     return itens
 
 
-def buscar_ddgs(consulta: str, max_resultados: int = 4) -> list[str]:
-    itens = []
-    try:
-        with DDGS() as ddgs:
-            resultados = list(ddgs.text(consulta, region="br-pt", max_results=max_resultados))
-            for idx, r in enumerate(resultados, start=1):
-                titulo = r.get("title", "").strip()
-                trecho = r.get("body", "").strip()
-                link = r.get("href", "").strip()
-                if titulo or trecho:
-                    itens.append(f"[Web {idx}] {titulo}\nResumo: {trecho}\nFonte: {link}")
-    except Exception:
-        pass
-    return itens
-
-
 def pesquisar_na_internet(consulta: str, tavily_key: str) -> str:
-    resultado_tavily = buscar_com_tavily(consulta, tavily_key)
+    resultado_tavily = buscar_com_tavily_http(consulta, tavily_key)
     if resultado_tavily:
         return resultado_tavily
 
-    coletados = []
-    coletados.extend(buscar_google_noticias_rss(montar_query_com_datas(consulta), max_itens=5))
-    coletados.extend(buscar_ddgs(montar_query_com_datas(consulta), max_resultados=4))
-    return "\n\n".join(coletados[:8]) if coletados else ""
+    coletados = buscar_google_noticias_rss(montar_query_com_datas(consulta), max_itens=6)
+    return "\n\n".join(coletados) if coletados else ""
 
 
 def processar_turno_usuario(
