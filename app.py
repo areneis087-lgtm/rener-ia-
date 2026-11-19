@@ -11,7 +11,7 @@ from ddgs import DDGS
 from groq import Groq
 import imageio.v2 as imageio
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 import requests
 import streamlit as st
 from tavily import TavilyClient
@@ -59,24 +59,6 @@ def encontrar_e_carregar_fundo() -> str:
             return f"data:{mime};base64,{b64}"
 
     return ""
-
-
-def recortar_bordas_imagem(
-    img: Image.Image,
-    margem_esq: float = 0.03,
-    margem_topo: float = 0.03,
-    margem_dir: float = 0.08,
-    margem_baixo: float = 0.08,
-) -> Image.Image:
-    largura, altura = img.size
-    if largura < 120 or altura < 120:
-        return img
-    x0 = int(largura * margem_esq)
-    y0 = int(altura * margem_topo)
-    x1 = max(x0 + 1, largura - int(largura * margem_dir))
-    y1 = max(y0 + 1, altura - int(altura * margem_baixo))
-    cortada = img.crop((x0, y0, x1, y1))
-    return cortada.resize((largura, altura), Image.Resampling.LANCZOS)
 
 
 def detectar_pedido_midia(texto: str) -> str:
@@ -135,16 +117,15 @@ def detectar_pedido_midia(texto: str) -> str:
     return ""
 
 
-def detectar_dimensoes_pedido(pedido_usuario: str, padrao_w: int = 1536, padrao_h: int = 1536) -> tuple[int, int]:
+def detectar_dimensoes_pedido(pedido_usuario: str, padrao_w: int = 1024, padrao_h: int = 1024) -> tuple[int, int]:
     t = pedido_usuario.lower()
-    pede_4k = "4k" in t or "ultra hd" in t or "uhd" in t
-    pede_paisagem = any(p in t for p in ("paisagem", "widescreen", "horizontal", "banner", "cinematográfico", "cinematografico"))
-    pede_vertical = any(p in t for p in ("vertical", "stories", "story", "celular", "portrait", "wall"))
+    pede_paisagem = any(p in t for p in ("paisagem", "widescreen", "horizontal", "banner", "cinematográfico", "cinematografico", "4k"))
+    pede_vertical = any(p in t for p in ("vertical", "stories", "story", "celular", "portrait"))
 
     if pede_vertical:
-        return (1080, 1920) if pede_4k else (1024, 1536)
-    if pede_paisagem or pede_4k:
-        return (1920, 1080) if pede_4k else (1536, 1024)
+        return (768, 1280)
+    if pede_paisagem:
+        return (1280, 720)
     return (padrao_w, padrao_h)
 
 
@@ -166,9 +147,8 @@ def planejar_cena_com_ia(
 ) -> dict:
     fallback = {
         "prompt_visual": (
-            f"candid real-life photograph of {pedido_usuario}, shot on professional full-frame DSLR camera, "
-            "natural lighting, sharp focus on subject, authentic real-world textures, true-to-life anatomy and details, "
-            "no cartoon, no illustration, no anime, no 3d render, no artificial look, no text, no watermark"
+            f"realistic photograph of {pedido_usuario}, natural daylight, sharp focus, "
+            "authentic real-world details, true-to-life textures, no text, no watermark"
         ),
         "cor_a": (25, 35, 55),
         "cor_b": (15, 20, 32),
@@ -183,17 +163,13 @@ def planejar_cena_com_ia(
                 {
                     "role": "system",
                     "content": (
-                        "Você é o diretor visual do Rener. Sua missão é entender exatamente o que o usuário pediu "
+                        "Você é o diretor visual do Rener. Sua função é entender perfeitamente o que o usuário pediu "
                         "(considerando o contexto recente da conversa quando houver referência como 'disso', 'dele' ou "
-                        "'mesmo tema') e gerar uma descrição visual fotográfica, nítida e fiel ao mundo real.\n"
-                        "Diretrizes obrigatórias:\n"
-                        "1. Foque exatamente no que foi pedido — se pedir um animal real (ex.: gato de verdade), "
-                        "descreva um animal real com pelo, olhos, postura e ambiente fotográfico autêntico.\n"
-                        "2. Por padrão, o estilo deve ser fotografia real de câmera profissional, nítida, com iluminação "
-                        "natural e texturas reais — nunca estilo desenho animado, ilustração bizarra, pintura ou 3D estranho, "
-                        "a menos que o usuário peça explicitamente um desenho ou ilustração.\n"
-                        "3. Se o usuário mencionar '4k', priorize altíssima nitidez, microdetalhes reais e foco preciso.\n"
-                        "4. Nunca inclua palavras, letras, legendas, logos ou marcas d'água na imagem.\n"
+                        "'mesmo tema') em qualquer assunto.\n"
+                        "Regras:\n"
+                        "1. Foque exatamente no assunto pedido pelo usuário.\n"
+                        "2. Priorize fotografia realista e fiel ao mundo real, com iluminação natural, foco nítido e "
+                        "detalhes autênticos, sem texto, letras ou marca d'água.\n"
                         "Retorne APENAS um JSON válido com:\n"
                         "prompt_visual (descrição detalhada em inglês), "
                         "cor_a (3 inteiros RGB), cor_b (3 inteiros RGB), cor_c (3 inteiros RGB)."
@@ -225,78 +201,52 @@ def planejar_cena_com_ia(
     return fallback
 
 
-def _requisitar_imagem_pollinations(
-    prompt_final: str,
-    pollinations_key: str,
-    largura: int,
-    altura: int,
-    timeout_seg: int = 50,
-) -> Image.Image | None:
+def gerar_imagem_alta_qualidade(
+    info_cena: dict,
+    pollinations_key: str = "",
+    pedido_original: str = "",
+    largura: int = 1024,
+    altura: int = 1024,
+) -> bytes:
+    if pedido_original:
+        largura, altura = detectar_dimensoes_pedido(pedido_original, largura, altura)
+
+    prompt_visual = info_cena.get("prompt_visual", "realistic photograph, sharp focus, high detail")
+    prompt_limpo = f"{prompt_visual}, sharp focus, high detail, realistic lighting, no text, no watermark, no logo"
     param_chave = f"&key={quote(pollinations_key)}" if pollinations_key else ""
     url = (
-        f"https://image.pollinations.ai/prompt/{quote(prompt_final)}"
+        f"https://image.pollinations.ai/prompt/{quote(prompt_limpo)}"
         f"?width={largura}&height={altura}&model=flux&nologo=true&enhance=true{param_chave}"
     )
     headers = {"User-Agent": "Mozilla/5.0"}
     if pollinations_key:
         headers["Authorization"] = f"Bearer {pollinations_key}"
 
-    resp = requests.get(url, timeout=timeout_seg, headers=headers)
-    if resp.status_code == 200 and resp.content:
-        img = Image.open(BytesIO(resp.content)).convert("RGB")
-        if img.size[0] >= 120 and img.size[1] >= 120:
-            return img
-    return None
-
-
-def gerar_imagem_alta_qualidade(
-    info_cena: dict,
-    pollinations_key: str = "",
-    pedido_original: str = "",
-    largura: int = 1536,
-    altura: int = 1536,
-) -> bytes:
-    if pedido_original:
-        largura, altura = detectar_dimensoes_pedido(pedido_original, largura, altura)
-
-    prompt_visual = info_cena.get("prompt_visual", "real life photograph, sharp focus, high detail")
-    prompt_4k_real = (
-        f"{prompt_visual}, 4k uhd resolution, ultra sharp focus, crisp natural detail, "
-        "real photography, no cartoon, no drawing, no blur, no text, no watermark, no logo"
-    )
-
-    tentativas_dimensoes = [
-        (largura, altura, 50),
-        (min(largura, 1280), min(altura, 1280), 40),
-        (1024, 1024, 35),
-    ]
-
-    for w, h, t_out in tentativas_dimensoes:
-        try:
-            img = _requisitar_imagem_pollinations(prompt_4k_real, pollinations_key, w, h, t_out)
-            if img is not None:
-                img = recortar_bordas_imagem(img).filter(ImageFilter.SHARPEN)
+    try:
+        resp = requests.get(url, timeout=45, headers=headers)
+        if resp.status_code == 200 and resp.content:
+            img = Image.open(BytesIO(resp.content)).convert("RGB")
+            if img.size[0] >= 120 and img.size[1] >= 120:
                 buf = BytesIO()
                 img.save(buf, format="PNG")
                 return buf.getvalue()
-        except Exception:
-            continue
+    except Exception:
+        pass
 
     ca = info_cena.get("cor_a", (24, 38, 68))
     cb = info_cena.get("cor_b", (10, 15, 26))
     cc = info_cena.get("cor_c", (210, 45, 55))
-    img = Image.new("RGB", (1024, 1024), cb)
+    img = Image.new("RGB", (largura, altura), cb)
     draw = ImageDraw.Draw(img)
-    for y in range(1024):
-        t = y / 1023
+    for y in range(altura):
+        t = y / max(1, altura - 1)
         r = int(cb[0] * (1 - t) + ca[0] * t)
         g = int(cb[1] * (1 - t) + ca[1] * t)
         b = int(cb[2] * (1 - t) + ca[2] * t)
-        draw.line([(0, y), (1024, y)], fill=(r, g, b))
-    cx, cy = 512, 512
-    for raio, alpha_cor in [(340, cc), (240, ca), (140, (240, 244, 248))]:
-        draw.ellipse([cx - raio, cy - raio, cx + raio, cy + raio], outline=alpha_cor, width=6)
-    img = recortar_bordas_imagem(img.filter(ImageFilter.SHARPEN))
+        draw.line([(0, y), (largura, y)], fill=(r, g, b))
+    cx, cy = largura // 2, altura // 2
+    for raio, alpha_cor in [(280, cc), (190, ca), (110, (240, 244, 248))]:
+        draw.ellipse([cx - raio, cy - raio, cx + raio, cy + raio], outline=alpha_cor, width=5)
     buf = BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -314,11 +264,11 @@ def gerar_video_curto_rener(
         info_cena,
         pollinations_key=pollinations_key,
         pedido_original=pedido_original,
-        largura=largura + 140,
-        altura=altura + 140,
+        largura=largura + 120,
+        altura=altura + 120,
     )
     arte_base = Image.open(BytesIO(img_bytes)).convert("RGB").resize(
-        (largura + 140, altura + 140), Image.Resampling.LANCZOS
+        (largura + 120, altura + 120), Image.Resampling.LANCZOS
     )
     total_frames = max(15, segundos * fps)
 
@@ -330,8 +280,8 @@ def gerar_video_curto_rener(
         try:
             for i in range(total_frames):
                 progresso = i / max(1, total_frames - 1)
-                dx = int(progresso * 140)
-                dy = int((1 - abs(2 * progresso - 1)) * 90)
+                dx = int(progresso * 120)
+                dy = int((1 - abs(2 * progresso - 1)) * 80)
                 frame = arte_base.crop((dx, dy, dx + largura, dy + altura)).convert("RGB")
                 writer.append_data(np.array(frame))
         finally:
@@ -771,7 +721,7 @@ system_prompt = {
         "Seu criador também se chama Rener, e ele montou este aplicativo junto com o Gemini. "
         "Quando perguntarem quem te criou ou sobre a origem do seu nome, responda exatamente: "
         "'Fui criado pelo Rener em parceria com o Gemini — por isso que meu nome é Rener, homenagem ao meu criador.' "
-        "Você entende perfeitamente qualquer assunto e qualquer pedido do usuário, conectando sempre o que está "
+        "Você entende qualquer assunto e qualquer pedido do usuário, conectando sempre o que está "
         "sendo dito agora ao histórico da conversa. "
         "Converse com naturalidade, autonomia e espontaneidade, como uma pessoa real que está batendo papo com o Rener. "
         "Quando o usuário te elogiar ou pedir para agradecer elogios, agradeça de forma simpática e direta na própria conversa. "
@@ -795,7 +745,7 @@ if st.session_state.menu_aba == "Biblioteca":
 
 elif st.session_state.menu_aba == "Imagens":
     st.subheader("🖼️ Imagens")
-    prompt_img = st.text_input("O que você quer criar?", placeholder="Ex: Gato de verdade em 4k, cachorro na praia...")
+    prompt_img = st.text_input("O que você quer criar?", placeholder="Ex: Gato real, leão na savana, carro...")
     if st.button("✨ Criar imagem", use_container_width=True):
         if prompt_img.strip():
             with st.spinner("Criando imagem..."):
@@ -823,7 +773,7 @@ elif st.session_state.menu_aba == "Imagens":
 
 elif st.session_state.menu_aba == "Vídeos":
     st.subheader("🎬 Vídeos")
-    prompt_vid = st.text_input("O que você quer no vídeo curto?", placeholder="Ex: Gato real em 4k, lobo na neve...")
+    prompt_vid = st.text_input("O que você quer no vídeo curto?", placeholder="Ex: Lobo na neve, praia ao pôr do sol...")
     duracao_vid = st.slider("Duração (segundos)", min_value=2, max_value=6, value=4)
     if st.button("🎥 Criar vídeo curto", use_container_width=True):
         if prompt_vid.strip():
