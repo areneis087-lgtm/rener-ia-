@@ -14,6 +14,7 @@ import numpy as np
 from PIL import Image
 import requests
 import streamlit as st
+from streamlit_mic_recorder import mic_recorder
 from tavily import TavilyClient
 
 st.set_page_config(page_title="Rener", page_icon="✨", layout="centered")
@@ -140,6 +141,34 @@ def buscar_imagem_real_na_web(consulta: str, max_tentativas: int = 8) -> bytes |
                 continue
 
     return None
+
+
+def transcrever_audio_com_groq(client: Groq, audio_bytes: bytes, formato: str = "wav") -> str:
+    if not audio_bytes:
+        return ""
+    ext = formato.lstrip(".").lower() or "wav"
+    with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+        tmp.write(audio_bytes)
+        caminho_audio = tmp.name
+
+    try:
+        with open(caminho_audio, "rb") as f_audio:
+            transcricao = client.audio.transcriptions.create(
+                file=(f"ditado.{ext}", f_audio.read()),
+                model="whisper-large-v3-turbo",
+                language="pt",
+                response_format="text",
+            )
+        if isinstance(transcricao, str):
+            return transcricao.strip()
+        return str(getattr(transcricao, "text", "") or "").strip()
+    except Exception:
+        return ""
+    finally:
+        try:
+            Path(caminho_audio).unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def cortar_selo_canto(img: Image.Image) -> Image.Image:
@@ -514,6 +543,107 @@ def pesquisar_na_internet(consulta: str, tavily_key: str) -> str:
     return "\n\n".join(coletados[:8]) if coletados else ""
 
 
+def processar_turno_usuario(
+    prompt_texto: str,
+    client: Groq,
+    tavily_key: str,
+    pollinations_key: str,
+    system_prompt: dict,
+) -> None:
+    st.session_state.messages.append({"role": "user", "content": prompt_texto})
+    with st.chat_message("user"):
+        st.markdown(prompt_texto)
+
+    with st.chat_message("assistant"):
+        historico_anterior = st.session_state.messages[:-1]
+        decisao = decidir_acao_com_ia(client, prompt_texto, historico_anterior)
+        acao = decisao["acao"]
+
+        if acao == "image":
+            pedido_midia = decisao["prompt_midia"]
+            with st.spinner("Criando imagem..."):
+                info = planejar_cena_com_ia(client, pedido_midia, "imagem", historico_anterior)
+                img_bytes = gerar_imagem_alta_qualidade(
+                    info,
+                    pollinations_key=pollinations_key,
+                    pedido_original=pedido_midia,
+                )
+                if img_bytes:
+                    st.session_state.ultima_imagem_gerada = img_bytes
+                    texto_resp = "Aqui está:"
+                    st.markdown(texto_resp)
+                    st.image(img_bytes, use_container_width=True)
+                    st.session_state.messages.append({"role": "assistant", "content": texto_resp, "image": img_bytes})
+                else:
+                    texto_resp = "Não consegui gerar a imagem agora. Tente novamente em instantes."
+                    st.markdown(texto_resp)
+                    st.session_state.messages.append({"role": "assistant", "content": texto_resp})
+
+        elif acao == "video":
+            pedido_midia = decisao["prompt_midia"]
+            with st.spinner("Criando vídeo curto..."):
+                info = planejar_cena_com_ia(client, pedido_midia, "vídeo curto", historico_anterior)
+                mp4_bytes = gerar_video_curto_rener(
+                    info,
+                    pollinations_key=pollinations_key,
+                    pedido_original=pedido_midia,
+                    segundos=4,
+                )
+                if mp4_bytes:
+                    st.session_state.ultimo_video_gerado = mp4_bytes
+                    texto_resp = "Aqui está:"
+                    st.markdown(texto_resp)
+                    st.video(mp4_bytes)
+                    st.session_state.messages.append({"role": "assistant", "content": texto_resp, "video": mp4_bytes})
+                else:
+                    texto_resp = "Não consegui gerar o vídeo curto agora. Tente novamente em instantes."
+                    st.markdown(texto_resp)
+                    st.session_state.messages.append({"role": "assistant", "content": texto_resp})
+
+        else:
+            with st.spinner("Pensando..."):
+                try:
+                    mensagens_enviadas = [system_prompt] + [
+                        {
+                            "role": m["role"],
+                            "content": (
+                                f"{m.get('content', '')} "
+                                f"{'[imagem exibida no chat]' if m.get('image') else ''} "
+                                f"{'[vídeo exibido no chat]' if m.get('video') else ''}"
+                            ).strip(),
+                        }
+                        for m in historico_anterior
+                        if m.get("content") or m.get("image") or m.get("video")
+                    ]
+
+                    if acao == "web":
+                        consulta_busca = decisao["consulta_web"] or prompt_texto
+                        resultados_web = pesquisar_na_internet(consulta_busca, tavily_key)
+                        if resultados_web:
+                            mensagem_envio = (
+                                f"Mensagem do usuário: {prompt_texto}\n\n"
+                                f"Dados da busca na internet:\n{resultados_web}\n\n"
+                                "Responda de forma natural e humana, usando os dados quando ajudarem."
+                            )
+                        else:
+                            mensagem_envio = prompt_texto
+                    else:
+                        mensagem_envio = prompt_texto
+
+                    mensagens_enviadas.append({"role": "user", "content": mensagem_envio})
+
+                    chat_completion = client.chat.completions.create(
+                        model="openai/gpt-oss-20b",
+                        messages=mensagens_enviadas,
+                        tool_choice="none",
+                    )
+                    response = chat_completion.choices[0].message.content
+                    st.markdown(response)
+                    st.session_state.messages.append({"role": "assistant", "content": response})
+                except Exception as e:
+                    st.error(f"Erro: {e}")
+
+
 bg_data_uri = encontrar_e_carregar_fundo()
 
 if bg_data_uri:
@@ -543,7 +673,7 @@ st.markdown(
         }}
 
         [data-testid="stMainBlockContainer"] {{
-            padding-bottom: 120px !important;
+            padding-bottom: 135px !important;
         }}
 
         {fundo_css}
@@ -700,6 +830,10 @@ if "ultima_imagem_gerada" not in st.session_state:
     st.session_state.ultima_imagem_gerada = None
 if "ultimo_video_gerado" not in st.session_state:
     st.session_state.ultimo_video_gerado = None
+if "ultimo_hash_audio" not in st.session_state:
+    st.session_state.ultimo_hash_audio = ""
+if "texto_ditado_pendente" not in st.session_state:
+    st.session_state.texto_ditado_pendente = ""
 
 chaves_secretas = carregar_chaves_secrets()
 groq_key = chaves_secretas["GROQ_API_KEY"]
@@ -712,6 +846,7 @@ with st.sidebar:
     if st.button("✏️ Nova conversa", use_container_width=True):
         st.session_state.messages = []
         st.session_state.menu_aba = "Chat"
+        st.session_state.texto_ditado_pendente = ""
         st.rerun()
 
     st.divider()
@@ -901,96 +1036,37 @@ else:
             if message.get("video"):
                 st.video(message["video"])
 
+    gravacao = mic_recorder(
+        start_prompt="🎙️ Ditar",
+        stop_prompt="⏹️ Parar",
+        just_once=False,
+        use_container_width=True,
+        key="microfone_ditado_rener",
+    )
+
+    if gravacao and isinstance(gravacao, dict) and gravacao.get("bytes"):
+        audio_bytes = gravacao["bytes"]
+        audio_hash = base64.b64encode(audio_bytes[:1024]).decode("utf-8") + f"_{len(audio_bytes)}"
+        if audio_hash != st.session_state.ultimo_hash_audio:
+            st.session_state.ultimo_hash_audio = audio_hash
+            with st.spinner("Transcrevendo sua voz..."):
+                texto_transcrito = transcrever_audio_com_groq(client, audio_bytes, formato="wav")
+                if texto_transcrito:
+                    st.session_state.texto_ditado_pendente = texto_transcrito
+
+    if st.session_state.texto_ditado_pendente:
+        st.info(f"🎙️ Ditado: **{st.session_state.texto_ditado_pendente}**")
+        col_env, col_limp = st.columns([3, 1])
+        with col_env:
+            if st.button("Enviar ditado", use_container_width=True):
+                texto_para_enviar = st.session_state.texto_ditado_pendente
+                st.session_state.texto_ditado_pendente = ""
+                processar_turno_usuario(texto_para_enviar, client, tavily_key, pollinations_key, system_prompt)
+                st.rerun()
+        with col_limp:
+            if st.button("Limpar", use_container_width=True):
+                st.session_state.texto_ditado_pendente = ""
+                st.rerun()
+
     if prompt := st.chat_input("Peça ao Rener"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        with st.chat_message("assistant"):
-            historico_anterior = st.session_state.messages[:-1]
-            decisao = decidir_acao_com_ia(client, prompt, historico_anterior)
-            acao = decisao["acao"]
-
-            if acao == "image":
-                pedido_midia = decisao["prompt_midia"]
-                with st.spinner("Criando imagem..."):
-                    info = planejar_cena_com_ia(client, pedido_midia, "imagem", historico_anterior)
-                    img_bytes = gerar_imagem_alta_qualidade(
-                        info,
-                        pollinations_key=pollinations_key,
-                        pedido_original=pedido_midia,
-                    )
-                    if img_bytes:
-                        st.session_state.ultima_imagem_gerada = img_bytes
-                        texto_resp = "Aqui está:"
-                        st.markdown(texto_resp)
-                        st.image(img_bytes, use_container_width=True)
-                        st.session_state.messages.append({"role": "assistant", "content": texto_resp, "image": img_bytes})
-                    else:
-                        texto_resp = "Não consegui gerar a imagem agora. Tente novamente em instantes."
-                        st.markdown(texto_resp)
-                        st.session_state.messages.append({"role": "assistant", "content": texto_resp})
-
-            elif acao == "video":
-                pedido_midia = decisao["prompt_midia"]
-                with st.spinner("Criando vídeo curto..."):
-                    info = planejar_cena_com_ia(client, pedido_midia, "vídeo curto", historico_anterior)
-                    mp4_bytes = gerar_video_curto_rener(
-                        info,
-                        pollinations_key=pollinations_key,
-                        pedido_original=pedido_midia,
-                        segundos=4,
-                    )
-                    if mp4_bytes:
-                        st.session_state.ultimo_video_gerado = mp4_bytes
-                        texto_resp = "Aqui está:"
-                        st.markdown(texto_resp)
-                        st.video(mp4_bytes)
-                        st.session_state.messages.append({"role": "assistant", "content": texto_resp, "video": mp4_bytes})
-                    else:
-                        texto_resp = "Não consegui gerar o vídeo curto agora. Tente novamente em instantes."
-                        st.markdown(texto_resp)
-                        st.session_state.messages.append({"role": "assistant", "content": texto_resp})
-
-            else:
-                with st.spinner("Pensando..."):
-                    try:
-                        mensagens_enviadas = [system_prompt] + [
-                            {
-                                "role": m["role"],
-                                "content": (
-                                    f"{m.get('content', '')} "
-                                    f"{'[imagem exibida no chat]' if m.get('image') else ''} "
-                                    f"{'[vídeo exibido no chat]' if m.get('video') else ''}"
-                                ).strip(),
-                            }
-                            for m in historico_anterior
-                            if m.get("content") or m.get("image") or m.get("video")
-                        ]
-
-                        if acao == "web":
-                            consulta_busca = decisao["consulta_web"] or prompt
-                            resultados_web = pesquisar_na_internet(consulta_busca, tavily_key)
-                            if resultados_web:
-                                mensagem_envio = (
-                                    f"Mensagem do usuário: {prompt}\n\n"
-                                    f"Dados da busca na internet:\n{resultados_web}\n\n"
-                                    "Responda de forma natural e humana, usando os dados quando ajudarem."
-                                )
-                            else:
-                                mensagem_envio = prompt
-                        else:
-                            mensagem_envio = prompt
-
-                        mensagens_enviadas.append({"role": "user", "content": mensagem_envio})
-
-                        chat_completion = client.chat.completions.create(
-                            model="openai/gpt-oss-20b",
-                            messages=mensagens_enviadas,
-                            tool_choice="none",
-                        )
-                        response = chat_completion.choices[0].message.content
-                        st.markdown(response)
-                        st.session_state.messages.append({"role": "assistant", "content": response})
-                    except Exception as e:
-                        st.error(f"Erro: {e}")
+        processar_turno_usuario(prompt, client, tavily_key, pollinations_key, system_prompt)
