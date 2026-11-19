@@ -11,7 +11,7 @@ from ddgs import DDGS
 from groq import Groq
 import imageio.v2 as imageio
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 import requests
 import streamlit as st
 from tavily import TavilyClient
@@ -61,6 +61,11 @@ def encontrar_e_carregar_fundo() -> str:
     return ""
 
 
+def eh_pedido_escudo_ou_emblema(texto: str) -> bool:
+    t = (texto or "").lower()
+    return any(p in t for p in ("escudo", "emblema", "brasão", "brasao", "símbolo", "simbolo", "logo"))
+
+
 def cortar_selo_canto(img: Image.Image) -> Image.Image:
     largura, altura = img.size
     if largura < 200 or altura < 200:
@@ -106,8 +111,8 @@ def decidir_acao_com_ia(client: Groq, mensagem_atual: str, historico: list[dict]
                     "content": (
                         "Você é o roteador inteligente de intenções do assistente Rener. "
                         "Analise a mensagem atual e o contexto recente da conversa e escolha UMA ação:\n"
-                        "- 'image': o usuário quer ver, criar ou gerar uma imagem ou foto (incluindo pedidos que "
-                        "continuam um pedido visual anterior, como 'em 4k', 'de frente', 'mais realista').\n"
+                        "- 'image': o usuário quer ver, criar ou gerar uma imagem, foto, escudo ou emblema "
+                        "(incluindo pedidos que continuam um pedido visual anterior, como 'em 4k', 'de frente', 'mais realista').\n"
                         "- 'video': o usuário quer ver, criar ou gerar um vídeo, animação ou clipe curto.\n"
                         "- 'web': a resposta exige fato recente, notícia, placar, resultado, cotação, clima, "
                         "estreia ou informação atual da internet.\n"
@@ -147,13 +152,24 @@ def planejar_cena_com_ia(
     tipo_midia: str,
     historico_mensagens: list[dict] | None = None,
 ) -> dict:
-    fallback = {
-        "prompt_visual": (
-            f"candid real-life photograph of {pedido_usuario}, shot on professional camera, "
-            "natural lighting, sharp focus, authentic real-world textures, true-to-life details, "
-            "no cartoon, no illustration, no 3d render, no text, no watermark"
-        ),
-    }
+    eh_escudo = eh_pedido_escudo_ou_emblema(pedido_usuario)
+    if eh_escudo:
+        fallback = {
+            "prompt_visual": (
+                f"clean flat vector football crest emblem inspired by {pedido_usuario}, "
+                "sharp crisp geometric shapes, centered on clean dark background, "
+                "no distorted faces, no extra text, no watermark"
+            ),
+        }
+    else:
+        fallback = {
+            "prompt_visual": (
+                f"candid real-life photograph of {pedido_usuario}, shot on professional camera, "
+                "natural lighting, sharp focus, authentic real-world textures, true-to-life details, "
+                "no cartoon, no illustration, no 3d render, no text, no watermark"
+            ),
+        }
+
     contexto_str = formatar_historico_curto(historico_mensagens or [])
     try:
         resp = client.chat.completions.create(
@@ -164,16 +180,15 @@ def planejar_cena_com_ia(
                     "role": "system",
                     "content": (
                         "Você é o diretor visual inteligente do Rener. Sua função é compreender perfeitamente o "
-                        "que o usuário pediu em qualquer assunto (animais, ciência, espaço, esportes, filmes, "
-                        "lugares, objetos, pessoas, tecnologia, cotidiano) e associar ao contexto recente da "
-                        "conversa quando houver referências como 'disso', 'dele', 'agora em vídeo' ou 'mesmo tema'.\n"
+                        "que o usuário pediu em qualquer assunto e associar ao contexto recente da conversa.\n"
                         "Regras:\n"
                         "1. Foque exatamente no assunto pedido pelo usuário, sem trocar o tema.\n"
-                        "2. Se pedir um símbolo ou escudo isolado, descreva apenas o emblema centralizado em fundo limpo.\n"
-                        "3. Para cenas, animais, pessoas, veículos ou lugares, priorize fotografia realista e fiel "
-                        "ao mundo real, com iluminação natural, foco nítido e texturas autênticas (evite aspecto de "
-                        "desenho ou 3D artificial, salvo se o usuário pedir explicitamente desenho/ilustração).\n"
-                        "4. Nunca inclua palavras, letras, legendas, logos ou marcas d'água na imagem.\n"
+                        "2. Se o pedido envolver escudo, brasão, emblema ou logo, descreva um emblema gráfico "
+                        "limpo, simétrico, nítido e centralizado em fundo simples (nunca use 'candid photograph' "
+                        "ou '3d render' distorcido para escudos).\n"
+                        "3. Para cenas, animais, pessoas, veículos ou lugares reais, priorize fotografia realista "
+                        "com iluminação natural, foco nítido e texturas autênticas.\n"
+                        "4. Nunca inclua palavras soltas aleatórias ou marcas d'água.\n"
                         "Retorne APENAS um JSON válido com a chave:\n"
                         "prompt_visual (descrição detalhada em inglês)."
                     ),
@@ -206,10 +221,14 @@ def gerar_imagem_alta_qualidade(
 ) -> bytes | None:
     largura, altura = detectar_dimensoes_pedido(pedido_original)
     prompt_visual = info_cena.get("prompt_visual", "realistic photograph, sharp focus, high detail")
-    prompt_limpo = (
-        f"{prompt_visual}, sharp focus, high clarity, natural lighting, "
-        "no cartoon, no blur, no text, no watermark, no logo"
-    )
+    if eh_pedido_escudo_ou_emblema(pedido_original):
+        prompt_limpo = f"{prompt_visual}, crisp edges, clean emblem design, no watermark, no logo text"
+    else:
+        prompt_limpo = (
+            f"{prompt_visual}, sharp focus, high clarity, natural lighting, "
+            "no cartoon, no blur, no text, no watermark, no logo"
+        )
+
     param_chave = f"&key={quote(pollinations_key)}" if pollinations_key else ""
     url = (
         f"https://image.pollinations.ai/prompt/{quote(prompt_limpo)}"
