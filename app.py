@@ -6,24 +6,38 @@ import streamlit as st
 st.set_page_config(page_title="Rener", page_icon="✨", layout="centered")
 
 
-def carregar_fundo_base64(caminho_imagem: str) -> str:
-    caminho = Path(caminho_imagem)
-    if caminho.exists():
-        dados = caminho.read_bytes()
-        b64 = base64.b64encode(dados).decode("utf-8")
-        ext = caminho.suffix.lower().lstrip(".")
-        mime = "image/jpeg" if ext in ("jpg", "jpeg") else "image/png"
-        return f"data:{mime};base64,{b64}"
-    return ""
+def encontrar_e_carregar_fundo() -> tuple[str, str]:
+    candidatos = [
+        Path("fundo.png"),
+        Path("fundo.jpg"),
+        Path("fundo.jpeg"),
+        Path("fundo.webp"),
+        Path("1000426462_2.png"),
+        Path("1000426462.png"),
+    ]
+    for arq in Path(".").iterdir():
+        if arq.is_file() and arq.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
+            if arq.stem.lower().startswith("fundo") or "1000426462" in arq.stem.lower():
+                candidatos.insert(0, arq)
+
+    for caminho in candidatos:
+        if caminho.exists() and caminho.is_file():
+            dados = caminho.read_bytes()
+            b64 = base64.b64encode(dados).decode("utf-8")
+            ext = caminho.suffix.lower().lstrip(".")
+            mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+            return f"data:{mime};base64,{b64}", caminho.name
+
+    return "", ""
 
 
-bg_data_uri = carregar_fundo_base64("fundo.png")
+bg_data_uri, nome_imagem_encontrada = encontrar_e_carregar_fundo()
 
 if bg_data_uri:
     fundo_css = f"""
         .stApp {{
             background:
-                linear-gradient(rgba(5, 8, 17, 0.68), rgba(5, 8, 17, 0.78)),
+                linear-gradient(rgba(5, 8, 17, 0.55), rgba(5, 8, 17, 0.68)),
                 url("{bg_data_uri}") center center / cover no-repeat fixed !important;
             color: #f3f4f6;
         }}
@@ -61,13 +75,13 @@ st.markdown(
             font-weight: 600;
             color: #ffffff;
             margin: 0;
-            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
         }}
         .hero-sub {{
             font-size: 14px;
             color: #e2e8f0;
             margin-top: 6px;
-            text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
+            text-shadow: 0 1px 8px rgba(0, 0, 0, 0.85);
         }}
 
         /* Esconde avatares/ícones padrão de usuário e robô no chat */
@@ -182,6 +196,9 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+if not nome_imagem_encontrada:
+    st.caption("⚠️ Nenhuma imagem de fundo encontrada na pasta do app. Envie sua imagem para o GitHub como `fundo.png`.")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
