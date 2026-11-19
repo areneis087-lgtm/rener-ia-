@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote_plus
 import xml.etree.ElementTree as ET
@@ -6,6 +7,7 @@ from ddgs import DDGS
 from groq import Groq
 import requests
 import streamlit as st
+from tavily import TavilyClient
 
 st.set_page_config(page_title="Rener", page_icon="✨", layout="centered")
 
@@ -35,12 +37,51 @@ def encontrar_e_carregar_fundo() -> str:
     return ""
 
 
-def montar_consulta_web(pergunta: str) -> str:
-    texto = pergunta.strip()
-    gatilhos_jogo = ("jogo", "placar", "resultado", "gol", "gols", "ontem", "hoje", "ao vivo", "partida")
-    if any(palavra in texto.lower() for palavra in gatilhos_jogo):
-        return f"{texto} placar resultado"
-    return texto
+def eh_consulta_esportiva_ou_tempo_real(consulta: str) -> bool:
+    gatilhos = ("jogo", "placar", "resultado", "gol", "gols", "ontem", "hoje", "ao vivo", "partida", "notícia", "noticia")
+    return any(p in consulta.lower() for p in gatilhos)
+
+
+def buscar_com_tavily(consulta: str) -> str:
+    tavily_key = str(st.secrets.get("TAVILY_API_KEY", "")).strip()
+    if not tavily_key:
+        return ""
+    try:
+        tavily = TavilyClient(api_key=tavily_key)
+        tempo_real = eh_consulta_esportiva_ou_tempo_real(consulta)
+        categoria = "news" if tempo_real else "general"
+        profundidade = "advanced" if tempo_real else "basic"
+        query_busca = f"{consulta} placar resultado gols" if tempo_real else consulta
+
+        resposta = tavily.search(
+            query=query_busca,
+            topic=categoria,
+            search_depth=profundidade,
+            max_results=5,
+            include_answer=True,
+            include_raw_content=tempo_real,
+        )
+
+        blocos = []
+        resumo_direto = (resposta.get("answer") or "").strip()
+        if resumo_direto:
+            blocos.append(f"[Resumo direto da pesquisa]\n{resumo_direto}")
+
+        for idx, item in enumerate(resposta.get("results", []), start=1):
+            titulo = (item.get("title") or "").strip()
+            conteudo = (item.get("content") or "").strip()
+            raw = (item.get("raw_content") or "").strip()
+            texto_extra = raw[:1200] if raw else conteudo
+            url = (item.get("url") or "").strip()
+            data_pub = (item.get("published_date") or "").strip()
+            cabecalho = f"[{idx}] {titulo}"
+            if data_pub:
+                cabecalho += f" ({data_pub})"
+            blocos.append(f"{cabecalho}\nResumo: {conteudo}\nDetalhes: {texto_extra}\nFonte: {url}")
+
+        return "\n\n".join(blocos)
+    except Exception:
+        return ""
 
 
 def buscar_google_noticias_rss(consulta: str, max_itens: int = 6) -> list[str]:
@@ -66,27 +107,7 @@ def buscar_google_noticias_rss(consulta: str, max_itens: int = 6) -> list[str]:
     return itens
 
 
-def buscar_wikipedia_pt(consulta: str) -> list[str]:
-    itens = []
-    try:
-        url = (
-            "https://pt.wikipedia.org/w/api.php"
-            f"?action=query&list=search&srsearch={quote_plus(consulta)}&utf8=&format=json&srlimit=3"
-        )
-        resp = requests.get(url, timeout=7, headers={"User-Agent": "RenerIA/1.0"})
-        if resp.status_code == 200:
-            data = resp.json()
-            for idx, r in enumerate(data.get("query", {}).get("search", []), start=1):
-                titulo = r.get("title", "").strip()
-                snippet = r.get("snippet", "").replace("<span class=\"searchmatch\">", "").replace("</span>", "").strip()
-                if titulo or snippet:
-                    itens.append(f"[Wiki {idx}] {titulo}\nResumo: {snippet}")
-    except Exception:
-        pass
-    return itens
-
-
-def buscar_ddgs(consulta: str, max_resultados: int = 5) -> list[str]:
+def buscar_ddgs(consulta: str, max_resultados: int = 4) -> list[str]:
     itens = []
     try:
         with DDGS() as ddgs:
@@ -103,24 +124,14 @@ def buscar_ddgs(consulta: str, max_resultados: int = 5) -> list[str]:
 
 
 def pesquisar_na_internet(consulta: str) -> str:
-    consulta_otimizada = montar_consulta_web(consulta)
-    coletados: list[str] = []
+    resultado_tavily = buscar_com_tavily(consulta)
+    if resultado_tavily:
+        return resultado_tavily
 
-    # 1. Google Notícias RSS (excelente para jogos, resultados e fatos recentes)
-    coletados.extend(buscar_google_noticias_rss(consulta_otimizada, max_itens=6))
-    if not coletados and consulta_otimizada != consulta:
-        coletados.extend(buscar_google_noticias_rss(consulta, max_itens=6))
-
-    # 2. DDGS como complemento/reforço
-    ddgs_itens = buscar_ddgs(consulta_otimizada, max_resultados=4)
-    if not ddgs_itens and consulta_otimizada != consulta:
-        ddgs_itens = buscar_ddgs(consulta, max_resultados=4)
-    coletados.extend(ddgs_itens)
-
-    # 3. Wikipedia para apoio enciclopédico
-    coletados.extend(buscar_wikipedia_pt(consulta))
-
-    return "\n\n".join(coletados[:10]) if coletados else ""
+    coletados = []
+    coletados.extend(buscar_google_noticias_rss(consulta, max_itens=5))
+    coletados.extend(buscar_ddgs(consulta, max_resultados=4))
+    return "\n\n".join(coletados[:8]) if coletados else ""
 
 
 bg_data_uri = encontrar_e_carregar_fundo()
@@ -348,23 +359,25 @@ with st.sidebar:
     st.caption("Criador: Rener")
 
 try:
-    api_key = st.secrets["GROQ_API_KEY"]
+    api_key = str(st.secrets["GROQ_API_KEY"]).strip()
 except Exception:
     st.error("⚠️ Chave de API não configurada! Adicione a GROQ_API_KEY em Settings > Secrets.")
     st.stop()
 
 client = Groq(api_key=api_key)
 
+data_atual = datetime.now().strftime("%d/%m/%Y")
+
 system_prompt = {
     "role": "system",
     "content": (
-        "Você se chama Rener. "
+        f"Você se chama Rener. Data atual do sistema: {data_atual}. "
         "Seu criador também se chama Rener, e ele montou este aplicativo junto com o Gemini. "
         "Quando perguntarem quem te criou ou sobre a origem do seu nome, responda exatamente: "
         "'Fui criado pelo Rener em parceria com o Gemini — por isso que meu nome é Rener, homenagem ao meu criador.' "
         "Nunca chame ferramentas internas como browser.search; responda sempre em texto direto usando os resultados de pesquisa fornecidos pelo sistema. "
-        "Quando houver notícias ou resultados da web, extraia e resuma o que foi encontrado de forma direta e útil (incluindo placares, datas ou contextos se aparecerem nos títulos/resumos). "
-        "Se os resultados não trouxerem o placar exato de uma partida, diga o que você encontrou nas notícias/buscas e avise com transparência caso o placar exato não conste ali. "
+        "Procure com atenção nos resultados de pesquisa por placares numéricos (ex: 2 x 1, 1-0, 3 a 0), marcadores de gol, competição e data do jogo, e informe-os logo na primeira frase. "
+        "Nunca invente um placar se ele não aparecer nos textos fornecidos. "
         f"Estilo de resposta atual: {st.session_state.estilo_rener}."
     ),
 }
@@ -457,15 +470,11 @@ else:
                     if resultados_web:
                         mensagem_com_busca = (
                             f"Pergunta do usuário: {prompt}\n\n"
-                            f"Resultados coletados na internet (Google Notícias, Web e/ou Wikipedia):\n{resultados_web}\n\n"
-                            "Responda de forma direta e útil com base nesses resultados."
+                            f"Resultados reais encontrados na internet:\n{resultados_web}\n\n"
+                            "Responda de forma direta, objetiva e natural com base nesses resultados, destacando o placar exato se ele constar nos textos."
                         )
                     else:
-                        mensagem_com_busca = (
-                            f"Pergunta do usuário: {prompt}\n\n"
-                            "Nota: Nenhuma fonte externa retornou resultados úteis no momento. "
-                            "Responda com o que você sabe ou avise com transparência o que não foi possível confirmar."
-                        )
+                        mensagem_com_busca = prompt
 
                     mensagens_enviadas.append({"role": "user", "content": mensagem_com_busca})
 
