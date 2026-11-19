@@ -1,9 +1,10 @@
 streamlit
 groq
+requests
+pillow
 tavily-python
 ddgs
-requests
-Pillow
-numpy
 imageio
 imageio-ffmpeg
+numpy
+streamlit-mic-recorder
