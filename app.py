@@ -1,26 +1,28 @@
 import streamlit as st
 from groq import Groq
 
-st.set_page_config(page_title="Rener", page_icon="✨", layout="centered")
+st.set_page_config(page_title="Rener", page_icon="✦", layout="centered")
 
-# Estilo moderno inspiradono visual escuro minimalista
+# Estilo moderno inspirado na interface escura com balão do usuário e resposta limpa da IA
 st.markdown(
     """
     <style>
         .stApp {
-            background: radial-gradient(circle at 50% 25%, #0c1938 0%, #050507 65%);
+            background: radial-gradient(circle at 50% 18%, #0c1938 0%, #050507 62%);
             color: #f3f4f6;
         }
         [data-testid="stSidebar"] {
             background-color: #090a0d;
             border-right: 1px solid rgba(255, 255, 255, 0.08);
         }
+
+        /* Tela inicial */
         .hero-box {
             text-align: center;
-            padding: 36px 12px 24px 12px;
+            padding: 44px 12px 28px 12px;
         }
         .hero-sparkle {
-            font-size: 34px;
+            font-size: 36px;
             margin-bottom: 10px;
         }
         .hero-title {
@@ -34,18 +36,67 @@ st.markdown(
             color: #9ca3af;
             margin-top: 6px;
         }
+
+        /* Mensagem do usuário: balão escuro arredondado à direita */
+        div[data-testid="stChatMessage"]:has(div[data-testid="stChatMessageAvatarUser"]) {
+            flex-direction: row-reverse;
+            background-color: transparent !important;
+        }
+        div[data-testid="stChatMessage"]:has(div[data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] {
+            background-color: #1e2026;
+            color: #f9fafb;
+            border-radius: 20px 20px 6px 20px;
+            padding: 10px 16px;
+            max-width: 82%;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+        }
+        div[data-testid="stChatMessageAvatarUser"] {
+            display: none;
+        }
+
+        /* Mensagem do assistente (IA): texto limpo direto no fundo */
+        div[data-testid="stChatMessage"]:has(div[data-testid="stChatMessageAvatarAssistant"]) {
+            background-color: transparent !important;
+            padding-left: 0px !important;
+            padding-right: 0px !important;
+        }
+        div[data-testid="stChatMessage"]:has(div[data-testid="stChatMessageAvatarAssistant"]) [data-testid="stChatMessageContent"] {
+            background-color: transparent !important;
+            color: #f3f4f6;
+            padding: 4px 2px;
+            max-width: 100%;
+        }
+        div[data-testid="stChatMessageAvatarAssistant"] {
+            display: none;
+        }
+
+        /* Barra inferior de digitação arredondada e moderna */
+        [data-testid="stChatInput"] {
+            padding-bottom: 10px;
+        }
+        [data-testid="stChatInput"] > div {
+            border-radius: 28px !important;
+            background-color: #181a20 !important;
+            border: 1px solid rgba(255, 255, 255, 0.14) !important;
+            padding: 4px 10px !important;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+        }
         [data-testid="stChatInput"] textarea {
-            border-radius: 24px !important;
-            background-color: #16181d !important;
+            background-color: transparent !important;
             color: #ffffff !important;
-            border: 1px solid rgba(255, 255, 255, 0.12) !important;
+            font-size: 15px !important;
+        }
+        [data-testid="stChatInput"] button {
+            border-radius: 50% !important;
+            background-color: #2b3a67 !important;
+            color: #ffffff !important;
         }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# Inicialização de estados
+# Estados da sessão
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "menu_aba" not in st.session_state:
@@ -57,7 +108,7 @@ if "programados" not in st.session_state:
 if "estilo_rener" not in st.session_state:
     st.session_state.estilo_rener = "Amigável e direto"
 
-# Menu lateral (acessível pelo ícone no canto superior esquerdo no mobile)
+# Menu lateral (3 traços no canto superior esquerdo no celular)
 with st.sidebar:
     st.markdown("### Rener")
 
@@ -93,7 +144,7 @@ with st.sidebar:
     st.divider()
     st.caption("Criador: Rener")
 
-# Chave da API via Secrets
+# Chave secreta da Groq
 try:
     api_key = st.secrets["GROQ_API_KEY"]
 except Exception:
@@ -113,7 +164,7 @@ system_prompt = {
     ),
 }
 
-# Navegação das seções do menu
+# Navegação das abas do menu
 if st.session_state.menu_aba == "Biblioteca":
     st.subheader("🗂️ Biblioteca")
     if st.session_state.messages:
@@ -150,60 +201,4 @@ elif st.session_state.menu_aba == "Programado":
     for item in st.session_state.programados:
         st.write(f"• {item}")
     if st.button("Voltar para o chat"):
-        st.session_state.menu_aba = "Chat"
-        st.rerun()
-
-elif st.session_state.menu_aba == "Personalizar":
-    st.subheader("⚙️ Personalizar")
-    estilo = st.selectbox(
-        "Como o Rener deve responder?",
-        ["Amigável e direto", "Detalhado e técnico", "Criativo e descontraído"],
-        index=["Amigável e direto", "Detalhado e técnico", "Criativo e descontraído"].index(
-            st.session_state.estilo_rener
-        ),
-    )
-    if st.button("Salvar preferência"):
-        st.session_state.estilo_rener = estilo
-        st.success("Preferência salva!")
-    if st.button("Voltar para o chat"):
-        st.session_state.menu_aba = "Chat"
-        st.rerun()
-
-else:
-    # Tela principal de chat
-    if not st.session_state.messages:
-        st.markdown(
-            """
-            <div class="hero-box">
-                <div class="hero-sparkle">✦</div>
-                <p class="hero-title">Olá, Rener, vamos começar</p>
-                <p class="hero-sub">Rener • Assistente de IA</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    if prompt := st.chat_input("Peça ao Rener"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        with st.chat_message("assistant"):
-            with st.spinner("Pensando..."):
-                try:
-                    mensagens_enviadas = [system_prompt] + [
-                        {"role": m["role"], "content": m["content"]} for m in st.session_state.messages
-                    ]
-                    chat_completion = client.chat.completions.create(
-                        model="openai/gpt-oss-20b",
-                        messages=mensagens_enviadas,
-                    )
-                    response = chat_completion.choices[0].message.content
-                    st.markdown(response)
-                    st.session_state.messages.append({"role": "assistant", "content": response})
-                except Exception as e:
-                    st.error(f"Erro: {e}")
+        st.
