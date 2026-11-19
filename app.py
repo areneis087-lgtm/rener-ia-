@@ -673,7 +673,7 @@ st.markdown(
         }}
 
         [data-testid="stMainBlockContainer"] {{
-            padding-bottom: 145px !important;
+            padding-bottom: 135px !important;
         }}
 
         {fundo_css}
@@ -759,20 +759,28 @@ st.markdown(
 
         .rener-mic-dock {{
             position: fixed;
-            right: 18px;
-            bottom: 78px;
-            z-index: 999;
-            background: rgba(14, 19, 32, 0.92);
-            border: 1.5px solid rgba(255, 255, 255, 0.75);
+            right: 68px;
+            bottom: 18px;
+            z-index: 1001;
+            background: rgba(148, 163, 184, 0.22);
+            border: 1.5px solid #ffffff;
             border-radius: 999px;
-            padding: 3px 10px;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+            padding: 0;
+            width: 38px;
+            height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
         }}
 
         .rener-mic-dock iframe {{
             height: 36px !important;
             min-height: 36px !important;
-            width: 112px !important;
+            width: 36px !important;
+            margin: 0 !important;
+            padding: 0 !important;
         }}
 
         [data-testid="stBottom"],
@@ -1056,8 +1064,8 @@ else:
 
     st.markdown('<div class="rener-mic-dock">', unsafe_allow_html=True)
     gravacao = mic_recorder(
-        start_prompt="🎙️",
-        stop_prompt="⏹️",
+        start_prompt="🎤",
+        stop_prompt="⏹",
         just_once=False,
         use_container_width=False,
         key="microfone_ditado_rener",
