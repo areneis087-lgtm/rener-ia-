@@ -34,6 +34,57 @@ st.markdown(
             margin-top: 6px;
         }
 
+        /* Esconde avatares/ícones padrão de usuário e robô no chat */
+        [data-testid="stChatMessageAvatarUser"],
+        [data-testid="stChatMessageAvatarAssistant"],
+        [data-testid="stChatMessage"] > div:first-child {
+            display: none !important;
+        }
+
+        /* Container base de cada mensagem */
+        [data-testid="stChatMessage"] {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 4px 0 !important;
+            margin-bottom: 10px !important;
+            display: flex !important;
+            width: 100% !important;
+        }
+
+        /* Mensagem do usuário à direita em formato arredondado */
+        [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]),
+        [data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) {
+            justify-content: flex-end !important;
+        }
+
+        [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"],
+        [data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) [data-testid="stChatMessageContent"] {
+            background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%) !important;
+            color: #ffffff !important;
+            border: 1px solid rgba(255, 255, 255, 0.25) !important;
+            border-radius: 24px 24px 6px 24px !important;
+            padding: 10px 16px !important;
+            max-width: 82% !important;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35) !important;
+        }
+
+        /* Resposta da IA à esquerda */
+        [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]),
+        [data-testid="stChatMessage"]:has([aria-label="Chat message from assistant"]) {
+            justify-content: flex-start !important;
+        }
+
+        [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) [data-testid="stChatMessageContent"],
+        [data-testid="stChatMessage"]:has([aria-label="Chat message from assistant"]) [data-testid="stChatMessageContent"] {
+            background: rgba(20, 26, 42, 0.55) !important;
+            color: #f3f4f6 !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            border-radius: 8px 22px 22px 22px !important;
+            padding: 10px 16px !important;
+            max-width: 88% !important;
+        }
+
         /* Rodapé transparente */
         [data-testid="stBottom"],
         [data-testid="stBottom"] > div,
@@ -89,14 +140,6 @@ st.markdown(
 
         [data-testid="stChatInput"] button:hover {
             background-color: #3b82f6 !important;
-        }
-
-        [data-testid="stChatMessage"] {
-            background-color: rgba(30, 41, 59, 0.55);
-            border: 1px solid rgba(255, 255, 255, 0.22);
-            border-radius: 20px;
-            padding: 10px 14px;
-            margin-bottom: 8px;
         }
     </style>
     """,
