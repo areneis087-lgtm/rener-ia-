@@ -673,7 +673,7 @@ st.markdown(
         }}
 
         [data-testid="stMainBlockContainer"] {{
-            padding-bottom: 135px !important;
+            padding-bottom: 145px !important;
         }}
 
         {fundo_css}
@@ -755,6 +755,24 @@ st.markdown(
             padding: 10px 16px !important;
             max-width: 88% !important;
             backdrop-filter: blur(6px);
+        }}
+
+        .rener-mic-dock {{
+            position: fixed;
+            right: 18px;
+            bottom: 78px;
+            z-index: 999;
+            background: rgba(14, 19, 32, 0.92);
+            border: 1.5px solid rgba(255, 255, 255, 0.75);
+            border-radius: 999px;
+            padding: 3px 10px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+        }}
+
+        .rener-mic-dock iframe {{
+            height: 36px !important;
+            min-height: 36px !important;
+            width: 112px !important;
         }}
 
         [data-testid="stBottom"],
@@ -1036,13 +1054,15 @@ else:
             if message.get("video"):
                 st.video(message["video"])
 
+    st.markdown('<div class="rener-mic-dock">', unsafe_allow_html=True)
     gravacao = mic_recorder(
-        start_prompt="🎙️ Ditar",
-        stop_prompt="⏹️ Parar",
+        start_prompt="🎙️",
+        stop_prompt="⏹️",
         just_once=False,
-        use_container_width=True,
+        use_container_width=False,
         key="microfone_ditado_rener",
     )
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if gravacao and isinstance(gravacao, dict) and gravacao.get("bytes"):
         audio_bytes = gravacao["bytes"]
