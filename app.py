@@ -1,7 +1,10 @@
 import base64
 from pathlib import Path
+from urllib.parse import quote_plus
+import xml.etree.ElementTree as ET
 from ddgs import DDGS
 from groq import Groq
+import requests
 import streamlit as st
 
 st.set_page_config(page_title="Rener", page_icon="✨", layout="centered")
@@ -36,28 +39,88 @@ def montar_consulta_web(pergunta: str) -> str:
     texto = pergunta.strip()
     gatilhos_jogo = ("jogo", "placar", "resultado", "gol", "gols", "ontem", "hoje", "ao vivo", "partida")
     if any(palavra in texto.lower() for palavra in gatilhos_jogo):
-        return f"{texto} placar resultado noticias"
+        return f"{texto} placar resultado"
     return texto
 
 
-def pesquisar_na_internet(consulta: str, max_resultados: int = 6) -> str:
-    consulta_otimizada = montar_consulta_web(consulta)
+def buscar_google_noticias_rss(consulta: str, max_itens: int = 6) -> list[str]:
+    itens = []
     try:
-        resultados_texto = []
-        with DDGS() as ddgs:
-            resultados = list(ddgs.text(consulta_otimizada, region="br-pt", max_results=max_resultados))
-            if not resultados and consulta_otimizada != consulta:
-                resultados = list(ddgs.text(consulta, region="br-pt", max_results=max_resultados))
+        url = f"https://news.google.com/rss/search?q={quote_plus(consulta)}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
+        resp = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code == 200 and resp.text:
+            root = ET.fromstring(resp.text)
+            for idx, item in enumerate(root.findall(".//item")[:max_itens], start=1):
+                titulo = (item.findtext("title") or "").strip()
+                pub_date = (item.findtext("pubDate") or "").strip()
+                link = (item.findtext("link") or "").strip()
+                if titulo:
+                    linha = f"[Notícia {idx}] {titulo}"
+                    if pub_date:
+                        linha += f" | Data: {pub_date}"
+                    if link:
+                        linha += f"\nFonte: {link}"
+                    itens.append(linha)
+    except Exception:
+        pass
+    return itens
 
+
+def buscar_wikipedia_pt(consulta: str) -> list[str]:
+    itens = []
+    try:
+        url = (
+            "https://pt.wikipedia.org/w/api.php"
+            f"?action=query&list=search&srsearch={quote_plus(consulta)}&utf8=&format=json&srlimit=3"
+        )
+        resp = requests.get(url, timeout=7, headers={"User-Agent": "RenerIA/1.0"})
+        if resp.status_code == 200:
+            data = resp.json()
+            for idx, r in enumerate(data.get("query", {}).get("search", []), start=1):
+                titulo = r.get("title", "").strip()
+                snippet = r.get("snippet", "").replace("<span class=\"searchmatch\">", "").replace("</span>", "").strip()
+                if titulo or snippet:
+                    itens.append(f"[Wiki {idx}] {titulo}\nResumo: {snippet}")
+    except Exception:
+        pass
+    return itens
+
+
+def buscar_ddgs(consulta: str, max_resultados: int = 5) -> list[str]:
+    itens = []
+    try:
+        with DDGS() as ddgs:
+            resultados = list(ddgs.text(consulta, region="br-pt", max_results=max_resultados))
             for idx, r in enumerate(resultados, start=1):
                 titulo = r.get("title", "").strip()
                 trecho = r.get("body", "").strip()
                 link = r.get("href", "").strip()
                 if titulo or trecho:
-                    resultados_texto.append(f"[{idx}] {titulo}\nResumo: {trecho}\nFonte: {link}")
-        return "\n\n".join(resultados_texto) if resultados_texto else ""
+                    itens.append(f"[Web {idx}] {titulo}\nResumo: {trecho}\nFonte: {link}")
     except Exception:
-        return ""
+        pass
+    return itens
+
+
+def pesquisar_na_internet(consulta: str) -> str:
+    consulta_otimizada = montar_consulta_web(consulta)
+    coletados: list[str] = []
+
+    # 1. Google Notícias RSS (excelente para jogos, resultados e fatos recentes)
+    coletados.extend(buscar_google_noticias_rss(consulta_otimizada, max_itens=6))
+    if not coletados and consulta_otimizada != consulta:
+        coletados.extend(buscar_google_noticias_rss(consulta, max_itens=6))
+
+    # 2. DDGS como complemento/reforço
+    ddgs_itens = buscar_ddgs(consulta_otimizada, max_resultados=4)
+    if not ddgs_itens and consulta_otimizada != consulta:
+        ddgs_itens = buscar_ddgs(consulta, max_resultados=4)
+    coletados.extend(ddgs_itens)
+
+    # 3. Wikipedia para apoio enciclopédico
+    coletados.extend(buscar_wikipedia_pt(consulta))
+
+    return "\n\n".join(coletados[:10]) if coletados else ""
 
 
 bg_data_uri = encontrar_e_carregar_fundo()
@@ -300,8 +363,8 @@ system_prompt = {
         "Quando perguntarem quem te criou ou sobre a origem do seu nome, responda exatamente: "
         "'Fui criado pelo Rener em parceria com o Gemini — por isso que meu nome é Rener, homenagem ao meu criador.' "
         "Nunca chame ferramentas internas como browser.search; responda sempre em texto direto usando os resultados de pesquisa fornecidos pelo sistema. "
-        "Quando houver resultados da web, extraia as informações relevantes (como placares, datas, times e notícias) de forma direta e clara. "
-        "Se os resultados não trouxerem um placar em tempo real ou exato, diga isso de forma transparente. "
+        "Quando houver notícias ou resultados da web, extraia e resuma o que foi encontrado de forma direta e útil (incluindo placares, datas ou contextos se aparecerem nos títulos/resumos). "
+        "Se os resultados não trouxerem o placar exato de uma partida, diga o que você encontrou nas notícias/buscas e avise com transparência caso o placar exato não conste ali. "
         f"Estilo de resposta atual: {st.session_state.estilo_rener}."
     ),
 }
@@ -394,14 +457,14 @@ else:
                     if resultados_web:
                         mensagem_com_busca = (
                             f"Pergunta do usuário: {prompt}\n\n"
-                            f"Resultados rápidos encontrados na internet:\n{resultados_web}\n\n"
+                            f"Resultados coletados na internet (Google Notícias, Web e/ou Wikipedia):\n{resultados_web}\n\n"
                             "Responda de forma direta e útil com base nesses resultados."
                         )
                     else:
                         mensagem_com_busca = (
                             f"Pergunta do usuário: {prompt}\n\n"
-                            "Nota: A busca na internet não retornou resultados úteis agora. "
-                            "Responda com o que souber ou avise com clareza se precisar de dados em tempo real."
+                            "Nota: Nenhuma fonte externa retornou resultados úteis no momento. "
+                            "Responda com o que você sabe ou avise com transparência o que não foi possível confirmar."
                         )
 
                     mensagens_enviadas.append({"role": "user", "content": mensagem_com_busca})
