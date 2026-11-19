@@ -34,36 +34,42 @@ st.markdown(
             margin-top: 6px;
         }
 
-        /* Rodapé limpo */
+        /* Rodapé transparente */
         [data-testid="stBottom"],
         [data-testid="stBottom"] > div,
-        [data-testid="stBottom"] > div > div,
-        [data-testid="stChatInput"],
-        [data-testid="stChatInput"] > div,
-        [data-testid="stChatInput"] > div > div {
+        [data-testid="stBottom"] > div > div {
             background: transparent !important;
             background-color: transparent !important;
             border: none !important;
             box-shadow: none !important;
         }
 
-        /* Contorno branco bem nítido em volta da barra de digitação */
-        [data-testid="stChatInput"] [data-baseweb="textarea"],
-        [data-testid="stChatInput"] [data-baseweb="base-input"] {
-            background-color: #121622 !important;
+        /* Contorno branco bem visível no bloco de entrada */
+        [data-testid="stChatInput"] {
+            background-color: #141926 !important;
             border: 2px solid #ffffff !important;
             border-radius: 999px !important;
             padding: 4px 10px 4px 16px !important;
-            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25), 0 10px 28px rgba(0, 0, 0, 0.75) !important;
+            box-shadow: 0 0 12px rgba(255, 255, 255, 0.25) !important;
+        }
+
+        [data-testid="stChatInput"] > div,
+        [data-testid="stChatInput"] > div > div,
+        [data-testid="stChatInput"] [data-baseweb="textarea"],
+        [data-testid="stChatInput"] [data-baseweb="base-input"] {
+            background: transparent !important;
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
         }
 
         [data-testid="stChatInput"] textarea {
+            background: transparent !important;
             background-color: transparent !important;
             color: #ffffff !important;
             caret-color: #ffffff !important;
             font-size: 15px !important;
             border: none !important;
-            border-radius: 999px !important;
             box-shadow: none !important;
         }
 
@@ -72,7 +78,6 @@ st.markdown(
             opacity: 1 !important;
         }
 
-        /* Botão de enviar bem visível */
         [data-testid="stChatInput"] button {
             background-color: #2563eb !important;
             color: #ffffff !important;
@@ -86,7 +91,6 @@ st.markdown(
             background-color: #3b82f6 !important;
         }
 
-        /* Bolhas de mensagem com contorno suave */
         [data-testid="stChatMessage"] {
             background-color: rgba(30, 41, 59, 0.55);
             border: 1px solid rgba(255, 255, 255, 0.22);
