@@ -106,6 +106,11 @@ def detectar_pedido_midia(texto: str) -> str:
         "ilustracao",
         "desenho",
         "arte",
+        "escudo",
+        "emblema",
+        "retrato",
+        "wallpaper",
+        "papel de parede",
         "gera uma",
         "gere uma",
         "cria uma",
@@ -118,22 +123,41 @@ def detectar_pedido_midia(texto: str) -> str:
         "crie um",
         "faz um",
         "faça um",
+        "mostra uma",
+        "quero ver um",
+        "quero ver uma",
     )
     if any(p in t for p in palavras_imagem):
         return "image"
     return ""
 
 
-def planejar_cena_com_ia(client: Groq, pedido_usuario: str, tipo_midia: str) -> dict:
+def formatar_historico_curto(mensagens: list[dict], limite: int = 8) -> str:
+    trechos = []
+    for m in mensagens[-limite:]:
+        papel = "Usuário" if m.get("role") == "user" else "Rener"
+        conteudo = str(m.get("content") or "").strip()
+        if conteudo:
+            trechos.append(f"{papel}: {conteudo}")
+    return "\n".join(trechos)
+
+
+def planejar_cena_com_ia(
+    client: Groq,
+    pedido_usuario: str,
+    tipo_midia: str,
+    historico_mensagens: list[dict] | None = None,
+) -> dict:
     fallback = {
         "prompt_visual": (
-            f"{pedido_usuario}, crisp focus, high resolution photography, realistic lighting, "
-            "rich fine textures, clean composition, no text, no watermark"
+            f"{pedido_usuario}, sharp focus, high resolution, realistic lighting, "
+            "accurate subject details, rich textures, clean composition, no text, no watermark"
         ),
         "cor_a": (25, 35, 55),
         "cor_b": (15, 20, 32),
         "cor_c": (220, 38, 38),
     }
+    contexto_str = formatar_historico_curto(historico_mensagens or [])
     try:
         resp = client.chat.completions.create(
             model="openai/gpt-oss-20b",
@@ -142,14 +166,32 @@ def planejar_cena_com_ia(client: Groq, pedido_usuario: str, tipo_midia: str) -> 
                 {
                     "role": "system",
                     "content": (
-                        "Você é o diretor visual do Rener. O usuário pediu uma imagem ou vídeo curto em português. "
-                        "Retorne APENAS um JSON válido com as chaves: "
-                        "prompt_visual (descrição rica e detalhada em inglês do tema pedido — times, seleções, animais, filmes, paisagens, cenas — com alta nitidez, foco preciso, iluminação cinematográfica, texturas detalhadas e sem texto ou marca d'água), "
-                        "cor_a (3 inteiros RGB), cor_b (3 inteiros RGB), cor_c (3 inteiros RGB). "
-                        "Nada fora do JSON."
+                        "Você é um diretor visual especialista em todas as áreas do conhecimento: "
+                        "esportes, times, seleções, animais, natureza, filmes, séries, personagens, história, "
+                        "ciência, espaço, tecnologia, veículos, arquitetura, gastronomia e cenas cotidianas.\n"
+                        "Sua tarefa é compreender perfeitamente o que o usuário pediu (associando ao histórico da conversa "
+                        "quando houver referências como 'disso', 'dele', 'agora em vídeo', 'outro ângulo') e traduzir "
+                        "isso em uma descrição visual fiel, específica e altamente nítida.\n"
+                        "Regras:\n"
+                        "1. Identifique o sujeito principal exato (sem trocar o tema por outra coisa).\n"
+                        "2. Se pedir um símbolo, logo, bandeira ou escudo isolado, descreva apenas o emblema centralizado "
+                        "sobre fundo limpo, sem pessoas ao redor.\n"
+                        "3. Se pedir uma cena, animal, filme, lugar ou objeto, descreva anatomia/forma fiel, ambiente autêntico, "
+                        "iluminação realista, foco nítido e texturas detalhadas.\n"
+                        "4. Nunca inclua texto escrito, legendas ou marcas d'água na descrição.\n"
+                        "Retorne APENAS um JSON válido com as chaves:\n"
+                        "prompt_visual (descrição detalhada em inglês), "
+                        "cor_a (3 inteiros RGB), cor_b (3 inteiros RGB), cor_c (3 inteiros RGB)."
                     ),
                 },
-                {"role": "user", "content": f"Tipo: {tipo_midia} | Pedido: {pedido_usuario}"},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Contexto recente da conversa:\n{contexto_str or '(início da conversa)'}\n\n"
+                        f"Formato desejado: {tipo_midia}\n"
+                        f"Pedido do usuário: {pedido_usuario}"
+                    ),
+                },
             ],
         )
         conteudo = (resp.choices[0].message.content or "").strip()
@@ -278,9 +320,6 @@ def precisa_pesquisar_na_web(consulta: str) -> bool:
         "show",
         "beleza",
         "ok",
-        "flamengo time",
-        "cadê imagem?",
-        "cade imagem?",
     }:
         return False
 
@@ -318,6 +357,11 @@ def precisa_pesquisar_na_web(consulta: str) -> bool:
         "procure",
         "na internet",
         "no google",
+        "lançamento",
+        "lancamento",
+        "estreia",
+        "atual",
+        "atualmente",
     )
     return any(p in texto for p in gatilhos_web)
 
@@ -684,10 +728,13 @@ system_prompt = {
         "Seu criador também se chama Rener, e ele montou este aplicativo junto com o Gemini. "
         "Quando perguntarem quem te criou ou sobre a origem do seu nome, responda exatamente: "
         "'Fui criado pelo Rener em parceria com o Gemini — por isso que meu nome é Rener, homenagem ao meu criador.' "
-        "Converse com naturalidade, autonomia e espontaneidade, como uma pessoa real que está batendo papo com o Rener. "
-        "Entenda bem o contexto da conversa para não responder de forma confusa ou fora do assunto. "
+        "Você domina todos os assuntos com profundidade, clareza e precisão: esportes, cinema, séries, ciência, "
+        "história, tecnologia, programação, natureza, animais, cultura geral, estudos e tarefas do dia a dia. "
+        "Converse com naturalidade, autonomia e espontaneidade, conectando sempre a resposta atual com o que já foi "
+        "conversado antes para nunca perder o fio da meada. "
         "Quando o usuário te elogiar ou pedir para agradecer elogios, agradeça de forma simpática e direta na própria conversa. "
-        "Quando o usuário comentar um placar ou algo que aconteceu, acompanhe o papo naturalmente; só quando ele pedir para você buscar ou confirmar um resultado/notícia na internet, use os dados da pesquisa sem inventar placar que não exista nas fontes. "
+        "Quando o usuário pedir para buscar ou confirmar um resultado, fato recente ou notícia na internet, use os dados "
+        "da pesquisa com exatidão sem inventar informações que não estejam nas fontes. "
         "Nunca chame ferramentas internas como browser.search; responda sempre em texto direto. "
         f"Estilo de resposta atual: {st.session_state.estilo_rener}."
     ),
@@ -706,11 +753,11 @@ if st.session_state.menu_aba == "Biblioteca":
 
 elif st.session_state.menu_aba == "Imagens":
     st.subheader("🖼️ Imagens")
-    prompt_img = st.text_input("O que você quer criar?", placeholder="Ex: Vasco da Gama, Seleção Brasileira, leão, filme...")
+    prompt_img = st.text_input("O que você quer criar?", placeholder="Ex: Leão na savana, cena de ficção científica, paisagem...")
     if st.button("✨ Criar imagem", use_container_width=True):
         if prompt_img.strip():
             with st.spinner("Criando imagem..."):
-                info = planejar_cena_com_ia(client, prompt_img.strip(), "imagem")
+                info = planejar_cena_com_ia(client, prompt_img.strip(), "imagem", st.session_state.messages)
                 img_bytes = gerar_imagem_alta_qualidade(info, pollinations_key=pollinations_key)
                 st.session_state.ultima_imagem_gerada = img_bytes
                 st.session_state.messages.append(
@@ -730,12 +777,12 @@ elif st.session_state.menu_aba == "Imagens":
 
 elif st.session_state.menu_aba == "Vídeos":
     st.subheader("🎬 Vídeos")
-    prompt_vid = st.text_input("O que você quer no vídeo curto?", placeholder="Ex: Vasco da Gama, Seleção Brasileira, leão...")
+    prompt_vid = st.text_input("O que você quer no vídeo curto?", placeholder="Ex: Lobo na neve, nave espacial, praia ao pôr do sol...")
     duracao_vid = st.slider("Duração (segundos)", min_value=2, max_value=6, value=4)
     if st.button("🎥 Criar vídeo curto", use_container_width=True):
         if prompt_vid.strip():
             with st.spinner("Criando vídeo curto..."):
-                info = planejar_cena_com_ia(client, prompt_vid.strip(), "vídeo curto")
+                info = planejar_cena_com_ia(client, prompt_vid.strip(), "vídeo curto", st.session_state.messages)
                 mp4_bytes = gerar_video_curto_rener(info, pollinations_key=pollinations_key, segundos=duracao_vid)
                 st.session_state.ultimo_video_gerado = mp4_bytes
                 st.session_state.messages.append(
@@ -813,7 +860,7 @@ else:
 
             if tipo_midia == "image":
                 with st.spinner("Criando imagem..."):
-                    info = planejar_cena_com_ia(client, prompt, "imagem")
+                    info = planejar_cena_com_ia(client, prompt, "imagem", st.session_state.messages[:-1])
                     img_bytes = gerar_imagem_alta_qualidade(info, pollinations_key=pollinations_key)
                     st.session_state.ultima_imagem_gerada = img_bytes
                     texto_resp = "Aqui está:"
@@ -823,7 +870,7 @@ else:
 
             elif tipo_midia == "video":
                 with st.spinner("Criando vídeo curto..."):
-                    info = planejar_cena_com_ia(client, prompt, "vídeo curto")
+                    info = planejar_cena_com_ia(client, prompt, "vídeo curto", st.session_state.messages[:-1])
                     mp4_bytes = gerar_video_curto_rener(info, pollinations_key=pollinations_key, segundos=4)
                     st.session_state.ultimo_video_gerado = mp4_bytes
                     texto_resp = "Aqui está:"
