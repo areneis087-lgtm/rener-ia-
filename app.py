@@ -286,8 +286,8 @@ system_prompt = {
         "Seu criador também se chama Rener, e ele montou este aplicativo junto com o Gemini. "
         "Quando perguntarem quem te criou ou sobre a origem do seu nome, responda exatamente: "
         "'Fui criado pelo Rener em parceria com o Gemini — por isso que meu nome é Rener, homenagem ao meu criador.' "
-        "Quando forem fornecidos resultados de pesquisa na internet, use esses dados para responder com precisão, clareza e rapidez, "
-        "indicando o que está atualizado ou ao vivo conforme os resultados. Se os resultados não trouxerem um placar em tempo real, avise isso com transparência. "
+        "Nunca chame ferramentas internas como browser.search; responda sempre em texto direto usando os resultados de pesquisa fornecidos pelo sistema. "
+        "Se os resultados não trouxerem um placar em tempo real ou exato, diga isso de forma transparente. "
         f"Estilo de resposta atual: {st.session_state.estilo_rener}."
     ),
 }
@@ -391,6 +391,7 @@ else:
                     chat_completion = client.chat.completions.create(
                         model="openai/gpt-oss-20b",
                         messages=mensagens_enviadas,
+                        tool_choice="none",
                     )
                     response = chat_completion.choices[0].message.content
                     st.markdown(response)
