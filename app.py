@@ -15,7 +15,11 @@ from PIL import Image
 import requests
 import streamlit as st
 from streamlit_mic_recorder import mic_recorder
-from tavily import TavilyClient
+
+try:
+    from tavily import TavilyClient
+except ImportError:
+    TavilyClient = None
 
 st.set_page_config(page_title="Rener", page_icon="✨", layout="centered")
 
@@ -449,7 +453,7 @@ def montar_query_com_datas(consulta: str) -> str:
 
 
 def buscar_com_tavily(consulta: str, tavily_key: str) -> str:
-    if not tavily_key:
+    if not tavily_key or TavilyClient is None:
         return ""
     try:
         tavily = TavilyClient(api_key=tavily_key)
