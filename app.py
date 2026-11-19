@@ -6,7 +6,7 @@ import streamlit as st
 st.set_page_config(page_title="Rener", page_icon="✨", layout="centered")
 
 
-def encontrar_e_carregar_fundo() -> tuple[str, str]:
+def encontrar_e_carregar_fundo() -> str:
     candidatos = [
         Path("fundo.png"),
         Path("fundo.jpg"),
@@ -26,18 +26,18 @@ def encontrar_e_carregar_fundo() -> tuple[str, str]:
             b64 = base64.b64encode(dados).decode("utf-8")
             ext = caminho.suffix.lower().lstrip(".")
             mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
-            return f"data:{mime};base64,{b64}", caminho.name
+            return f"data:{mime};base64,{b64}"
 
-    return "", ""
+    return ""
 
 
-bg_data_uri, nome_imagem_encontrada = encontrar_e_carregar_fundo()
+bg_data_uri = encontrar_e_carregar_fundo()
 
 if bg_data_uri:
     fundo_css = f"""
         .stApp {{
             background:
-                linear-gradient(rgba(5, 8, 17, 0.55), rgba(5, 8, 17, 0.68)),
+                linear-gradient(rgba(5, 8, 17, 0.42), rgba(5, 8, 17, 0.56)),
                 url("{bg_data_uri}") center center / cover no-repeat fixed !important;
             color: #f3f4f6;
         }}
@@ -61,10 +61,11 @@ st.markdown(
         }}
         .hero-box {{
             text-align: center;
-            padding: 36px 12px 24px 12px;
-            background: rgba(5, 8, 17, 0.45);
+            padding: 36px 16px 24px 16px;
+            background: rgba(5, 8, 17, 0.78);
+            border: 1px solid rgba(255, 255, 255, 0.12);
             border-radius: 24px;
-            backdrop-filter: blur(4px);
+            backdrop-filter: blur(6px);
         }}
         .hero-sparkle {{
             font-size: 36px;
@@ -127,7 +128,7 @@ st.markdown(
 
         [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) [data-testid="stChatMessageContent"],
         [data-testid="stChatMessage"]:has([aria-label="Chat message from assistant"]) [data-testid="stChatMessageContent"] {{
-            background: rgba(9, 13, 24, 0.78) !important;
+            background: rgba(9, 13, 24, 0.82) !important;
             color: #f8fafc !important;
             border: 1px solid rgba(255, 255, 255, 0.16) !important;
             border-radius: 8px 22px 22px 22px !important;
@@ -196,9 +197,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
-if not nome_imagem_encontrada:
-    st.caption("⚠️ Nenhuma imagem de fundo encontrada na pasta do app. Envie sua imagem para o GitHub como `fundo.png`.")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
