@@ -65,9 +65,8 @@ def cortar_selo_canto(img: Image.Image) -> Image.Image:
     largura, altura = img.size
     if largura < 200 or altura < 200:
         return img
-    # Remove apenas a faixa inferior onde costuma aparecer a marca d'água sem esticar o resto
-    cortada = img.crop((0, 0, largura, int(altura * 0.91)))
-    return cortada
+    # Remove apenas a faixa inferior onde costuma aparecer marca d'água, sem esticar o restante
+    return img.crop((0, 0, largura, int(altura * 0.91)))
 
 
 def detectar_pedido_midia(texto: str) -> str:
@@ -128,7 +127,9 @@ def detectar_pedido_midia(texto: str) -> str:
 
 def detectar_dimensoes_pedido(pedido_usuario: str) -> tuple[int, int]:
     t = pedido_usuario.lower()
-    pede_paisagem = any(p in t for p in ("paisagem", "widescreen", "horizontal", "banner", "cinematográfico", "cinematografico"))
+    pede_paisagem = any(
+        p in t for p in ("paisagem", "widescreen", "horizontal", "banner", "cinematográfico", "cinematografico")
+    )
     pede_vertical = any(p in t for p in ("vertical", "stories", "story", "celular", "portrait"))
 
     if pede_vertical:
@@ -156,8 +157,9 @@ def planejar_cena_com_ia(
 ) -> dict:
     fallback = {
         "prompt_visual": (
-            f"realistic photograph of {pedido_usuario}, natural daylight, sharp focus, "
-            "authentic real-world details, true-to-life textures, no text, no watermark"
+            f"candid real-life photograph of {pedido_usuario}, shot on professional camera, "
+            "natural lighting, sharp focus, authentic real-world textures, true-to-life details, "
+            "no cartoon, no illustration, no 3d render, no text, no watermark"
         ),
     }
     contexto_str = formatar_historico_curto(historico_mensagens or [])
@@ -169,13 +171,17 @@ def planejar_cena_com_ia(
                 {
                     "role": "system",
                     "content": (
-                        "Você é o diretor visual do Rener. Sua função é entender perfeitamente o que o usuário pediu "
-                        "(considerando o contexto recente da conversa quando houver referência como 'disso', 'dele' ou "
-                        "'mesmo tema') em qualquer assunto.\n"
+                        "Você é o diretor visual inteligente do Rener. Sua função é compreender perfeitamente o "
+                        "que o usuário pediu em qualquer assunto (animais, ciência, espaço, esportes, filmes, "
+                        "lugares, objetos, pessoas, tecnologia, cotidiano) e associar ao contexto recente da "
+                        "conversa quando houver referências como 'disso', 'dele', 'agora em vídeo' ou 'mesmo tema'.\n"
                         "Regras:\n"
-                        "1. Foque exatamente no assunto pedido pelo usuário.\n"
-                        "2. Priorize fotografia realista e fiel ao mundo real, com iluminação natural, foco nítido e "
-                        "detalhes autênticos, sem texto, letras ou marca d'água.\n"
+                        "1. Foque exatamente no assunto pedido pelo usuário, sem trocar o tema.\n"
+                        "2. Se pedir um símbolo ou escudo isolado, descreva apenas o emblema centralizado em fundo limpo.\n"
+                        "3. Para cenas, animais, pessoas, veículos ou lugares, priorize fotografia realista e fiel "
+                        "ao mundo real, com iluminação natural, foco nítido e texturas autênticas (evite aspecto de "
+                        "desenho ou 3D artificial, salvo se o usuário pedir explicitamente desenho/ilustração).\n"
+                        "4. Nunca inclua palavras, letras, legendas, logos ou marcas d'água na imagem.\n"
                         "Retorne APENAS um JSON válido com a chave:\n"
                         "prompt_visual (descrição detalhada em inglês)."
                     ),
@@ -208,7 +214,10 @@ def gerar_imagem_alta_qualidade(
 ) -> bytes | None:
     largura, altura = detectar_dimensoes_pedido(pedido_original)
     prompt_visual = info_cena.get("prompt_visual", "realistic photograph, sharp focus, high detail")
-    prompt_limpo = f"{prompt_visual}, sharp focus, high detail, realistic lighting, no text, no watermark, no logo"
+    prompt_limpo = (
+        f"{prompt_visual}, sharp focus, high clarity, natural lighting, "
+        "no cartoon, no blur, no text, no watermark, no logo"
+    )
     param_chave = f"&key={quote(pollinations_key)}" if pollinations_key else ""
     url = (
         f"https://image.pollinations.ai/prompt/{quote(prompt_limpo)}"
@@ -219,7 +228,7 @@ def gerar_imagem_alta_qualidade(
         headers["Authorization"] = f"Bearer {pollinations_key}"
 
     try:
-        resp = requests.get(url, timeout=35, headers=headers)
+        resp = requests.get(url, timeout=40, headers=headers)
         if resp.status_code == 200 and resp.content:
             img = Image.open(BytesIO(resp.content)).convert("RGB")
             if img.size[0] >= 120 and img.size[1] >= 120:
@@ -705,7 +714,7 @@ system_prompt = {
         "Seu criador também se chama Rener, e ele montou este aplicativo junto com o Gemini. "
         "Quando perguntarem quem te criou ou sobre a origem do seu nome, responda exatamente: "
         "'Fui criado pelo Rener em parceria com o Gemini — por isso que meu nome é Rener, homenagem ao meu criador.' "
-        "Você entende qualquer assunto e qualquer pedido do usuário, conectando sempre o que está "
+        "Você entende perfeitamente qualquer assunto e qualquer pedido do usuário, associando sempre o que está "
         "sendo dito agora ao histórico da conversa. "
         "Converse com naturalidade, autonomia e espontaneidade, como uma pessoa real que está batendo papo com o Rener. "
         "Quando o usuário te elogiar ou pedir para agradecer elogios, agradeça de forma simpática e direta na própria conversa. "
