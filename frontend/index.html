@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rener</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="drawerBackdrop" class="drawer-backdrop"></div>
+
+  <aside id="sideDrawer" class="side-drawer" aria-label="Menu lateral">
+    <div class="drawer-header">
+      <span class="drawer-title">Rener</span>
+      <button id="drawerCloseBtn" class="drawer-close-btn" type="button" aria-label="Fechar menu">✕</button>
+    </div>
+
+    <div class="drawer-section">
+      <button id="navNewChatBtn" class="drawer-nav-btn" type="button">
+        <span>✎</span><span>Nova conversa</span>
+      </button>
+      <button id="navLibraryBtn" class="drawer-nav-btn" type="button">
+        <span>⊞</span><span>Biblioteca</span>
+      </button>
+      <button id="navImagesBtn" class="drawer-nav-btn" type="button">
+        <span>🖼</span><span>Imagens</span>
+      </button>
+      <button id="navScheduledBtn" class="drawer-nav-btn" type="button">
+        <span>◔</span><span>Programado</span>
+      </button>
+      <button id="navCustomizeBtn" class="drawer-nav-btn" type="button">
+        <span>◎</span><span>Personalizar</span>
+      </button>
+      <button id="navVideosBtn" class="drawer-nav-btn" type="button">
+        <span>🎬</span><span>Vídeos</span>
+      </button>
+    </div>
+
+    <div class="drawer-section-label">Conversas e atalhos</div>
+    <div id="drawerList" class="drawer-scroll"></div>
+
+    <div class="drawer-footer">
+      <span id="drawerModeText" class="status-badge">Modo Padrão</span>
+      <button id="drawerClearHistoryBtn" class="ghost-btn" type="button">Limpar</button>
+    </div>
+  </aside>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button id="openDrawerBtn" class="menu-trigger-btn" type="button" aria-label="Abrir menu">☰</button>
+        <span class="brand-title">Rener</span>
+      </div>
+      <span id="statusBadge" class="status-badge">Online</span>
+      <button id="clearBtn" class="ghost-btn" type="button">Nova conversa</button>
+    </header>
+
+    <main id="chatArea" class="chat-area">
+      <div id="welcomeCard" class="welcome-card">
+        <h1>Olá, sou o Rener</h1>
+        <p>Conversa, imagens, vídeos e análise de arquivos em um só lugar. Puxe pela esquerda para abrir o menu.</p>
+      </div>
+    </main>
+
+    <div id="attachmentBar" class="attachment-bar hidden">
+      <div class="attachment-info">
+        <img id="attachmentThumb" class="attachment-thumb hidden" alt="Pré-visualização" />
+        <span id="attachmentName" class="attachment-name"></span>
+      </div>
+      <button id="removeAttachmentBtn" class="remove-attachment-btn" type="button">✕</button>
+    </div>
+
+    <div id="plusMenu" class="plus-menu hidden">
+      <div class="plus-sources">
+        <button id="cameraTileBtn" class="source-tile" type="button">
+          <span>📷</span><span>Câmera</span>
+        </button>
+        <button id="galleryTileBtn" class="source-tile" type="button">
+          <span>🖼</span><span>Galeria</span>
+        </button>
+        <button id="filesTileBtn" class="source-tile" type="button">
+          <span>📄</span><span>Arquivos</span>
+        </button>
+        <button id="imagePromptTileBtn" class="source-tile" type="button">
+          <span>✨</span><span>Imagem</span>
+        </button>
+      </div>
+
+      <button id="videoPromptRowBtn" class="menu-action-row" type="button">
+        <span>🎬</span>
+        <span class="action-text">
+          <strong>Gerar vídeo curto</strong>
+          <small>Prepara um pedido de vídeo no campo de texto</small>
+        </span>
+      </button>
+
+      <button id="creatorKeyRowBtn" class="menu-action-row" type="button">
+        <span>🔑</span>
+        <span class="action-text">
+          <strong>Chave Criador / Código Pro</strong>
+          <small>Configura o acesso sem limite de cota</small>
+        </span>
+      </button>
+    </div>
+
+    <div class="composer-wrap">
+      <form id="composerForm" class="composer">
+        <button id="plusBtn" class="icon-btn" type="button" aria-label="Mais opções">+</button>
+        <textarea id="promptInput" rows="1" placeholder="Escreva uma mensagem..."></textarea>
+        <button id="micBtn" class="icon-btn" type="button" aria-label="Gravar voz">🎤</button>
+        <button id="sendBtn" class="send-btn" type="submit" aria-label="Enviar">➤</button>
+      </form>
+    </div>
+
+    <input id="cameraInput" type="file" accept="image/*" capture="environment" class="hidden" />
+    <input id="galleryInput" type="file" accept="image/*" class="hidden" />
+    <input id="fileInput" type="file" accept=".pdf,.txt,.md,.csv,.json,.xml,.yaml,.yml,.py,.js,.ts,.jsx,.tsx,.html,.css,.sql,.log,image/*" class="hidden" />
+  </div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
