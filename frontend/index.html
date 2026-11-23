@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0b1220" />
+  <title>Rener</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body class="rener-app">
+  <div id="sidebar-backdrop" class="sidebar-backdrop" hidden></div>
+
+  <aside id="sidebar" class="sidebar" aria-label="Menu do Rener">
+    <div class="sidebar-header">
+      <div class="sidebar-brand">
+        <img src="./icon-192.png" alt="Rener" class="brand-avatar" />
+        <span class="brand-title">Rener</span>
+      </div>
+      <button type="button" id="close-sidebar-btn" class="icon-btn" aria-label="Fechar menu">×</button>
+    </div>
+
+    <div class="sidebar-actions">
+      <button type="button" id="new-chat-btn" class="sidebar-action-btn">Nova conversa</button>
+      <button type="button" id="shortcut-library-btn" class="sidebar-action-btn">Biblioteca</button>
+      <button type="button" id="shortcut-images-btn" class="sidebar-action-btn">Imagens</button>
+      <button type="button" id="shortcut-scheduled-btn" class="sidebar-action-btn">Programado</button>
+      <button type="button" id="shortcut-customize-btn" class="sidebar-action-btn">Personalizar</button>
+      <button type="button" id="shortcut-videos-btn" class="sidebar-action-btn">Vídeos</button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-header">
+        <span>Conversas e atalhos</span>
+        <button type="button" id="clear-history-btn" class="mini-btn">Limpar</button>
+      </div>
+      <div id="conversation-list" class="conversation-list"></div>
+    </div>
+
+    <div class="sidebar-footer">
+      <label for="style-select" class="style-label">Modo Padrão</label>
+      <select id="style-select" class="style-select">
+        <option value="Amigável e direto" selected>Amigável e direto</option>
+        <option value="Objetivo e rápido">Objetivo e rápido</option>
+        <option value="Detalhado e didático">Detalhado e didático</option>
+        <option value="Criativo">Criativo</option>
+      </select>
+    </div>
+  </aside>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button type="button" id="open-sidebar-btn" class="icon-btn" aria-label="Abrir menu">☰</button>
+        <div class="topbar-title-wrap">
+          <h1 class="topbar-title">Rener</h1>
+          <span id="status-badge" class="status-badge">Online</span>
+        </div>
+      </div>
+      <button type="button" id="topbar-new-chat-btn" class="ghost-btn">Nova conversa</button>
+    </header>
+
+    <main id="chat" class="chat-area" aria-live="polite">
+      <section id="welcome-screen" class="welcome-screen">
+        <h2 class="welcome-title">Olá, sou o Rener</h2>
+        <p class="welcome-subtitle">
+          Conversa, imagens, vídeos e análise de arquivos em um só lugar. Puxe pela esquerda para abrir o menu.
+        </p>
+      </section>
+    </main>
+
+    <footer class="composer-wrap">
+      <section id="attach-menu" class="attach-menu" hidden>
+        <button type="button" id="pick-camera-btn" class="attach-option">
+          <span class="attach-option-title">Câmera</span>
+        </button>
+        <button type="button" id="pick-gallery-btn" class="attach-option">
+          <span class="attach-option-title">Galeria</span>
+        </button>
+        <button type="button" id="pick-files-btn" class="attach-option">
+          <span class="attach-option-title">Arquivos</span>
+        </button>
+        <button type="button" id="quick-image-btn" class="attach-option">
+          <span class="attach-option-title">+ Imagem</span>
+        </button>
+        <button type="button" id="quick-video-btn" class="attach-option">
+          <span class="attach-option-title">Gerar vídeo curto</span>
+          <span class="attach-option-desc">Prepara um pedido de vídeo no campo de texto</span>
+        </button>
+        <button type="button" id="creator-pro-btn" class="attach-option">
+          <span class="attach-option-title">Chave Criador / Código Pro</span>
+          <span class="attach-option-desc">Configura o acesso sem limite de cota</span>
+        </button>
+      </section>
+
+      <div id="gallery-preview-box" class="gallery-preview-box" style="display: none;">
+        <span class="preview-label">Pré-visualização</span>
+        <img id="gallery-preview-img" src="" alt="Pré-visualização da imagem" />
+        <button type="button" id="clear-gallery-btn" aria-label="Remover imagem">×</button>
+      </div>
+
+      <form id="chat-form" class="composer-form">
+        <button type="button" id="attach-toggle-btn" class="attach-btn" aria-label="Mais opções">+</button>
+        <textarea
+          id="message-input"
+          class="message-input"
+          rows="1"
+          placeholder="Escreva uma mensagem..."
+        ></textarea>
+        <button type="button" id="mic-btn" class="icon-btn" aria-label="Gravar áudio">🎤</button>
+        <button type="submit" id="send-btn" class="send-btn" aria-label="Enviar">➤</button>
+      </form>
+
+      <input type="file" id="camera-input" accept="image/*" capture="environment" hidden />
+      <input type="file" id="gallery-input" accept="image/*" hidden />
+      <input type="file" id="files-input" accept=".pdf,.txt,.md,.csv,.json,.xml,.yaml,.yml,.py,.js,.ts,.html,.css,.sql,.log,image/*" hidden />
+    </footer>
+  </div>
+
+  <script src="./app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js").catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
